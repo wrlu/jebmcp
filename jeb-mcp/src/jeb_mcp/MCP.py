@@ -287,6 +287,26 @@ def ping():
     """Do a simple ping to check server is alive and running"""
     return "pong"
 
+# implement a FIFO queue to store the artifacts
+artifactQueue = list()
+
+def addArtifactToQueue(artifact):
+    """Add an artifact to the queue"""
+    artifactQueue.append(artifact)
+
+def getArtifactFromQueue():
+    """Get an artifact from the queue"""
+    if len(artifactQueue) > 0:
+        return artifactQueue.pop(0)
+    return None
+
+def clearArtifactQueue():
+    """Clear the artifact queue"""
+    global artifactQueue
+    artifactQueue = list()
+
+MAX_OPENED_ARTIFACTS = 10
+
 def getOrLoadApk(filepath):
     engctx = CTX.getEnginesContext()
 
@@ -306,7 +326,17 @@ def getOrLoadApk(filepath):
             correspondingArtifact = artifact
             break
     if not correspondingArtifact:
+        # try to load the artifact, but first check if the queue size has been exceeded
+        if len(artifactQueue) >= MAX_OPENED_ARTIFACTS:
+            # unload the oldest artifact
+            oldestArtifact = getArtifactFromQueue()
+            if oldestArtifact:
+                # unload the artifact
+                print('Unloading artifact: %s because queue size limit exeeded' % oldestArtifact.getArtifact().getName())
+                RuntimeProjectUtil.destroyLiveArtifact(oldestArtifact)
+
         correspondingArtifact = project.processArtifact(Artifact(base_name, FileInput(File(filepath))))
+        addArtifactToQueue(correspondingArtifact)
     
     unit = correspondingArtifact.getMainUnit()
     if isinstance(unit, IApkUnit):
