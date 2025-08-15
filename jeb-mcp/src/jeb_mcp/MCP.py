@@ -18,6 +18,7 @@ from com.pnfsoftware.jeb.core.util import DecompilerHelper
 from com.pnfsoftware.jeb.core.units.code.android import IApkUnit
 from com.pnfsoftware.jeb.core.output.text import TextDocumentUtil
 from com.pnfsoftware.jeb.core.units.code.asm.decompiler import INativeSourceUnit
+from com.pnfsoftware.jeb.core.actions import ActionXrefsData, Actions, ActionContext, ActionOverridesData
 from java.io import File
 
 import json
@@ -225,7 +226,7 @@ class MCPHTTPServer(BaseHTTPServer.HTTPServer):
     allow_reuse_address = False
 
 class Server(object):  # Use explicit inheritance from object for py2
-    HOST = "localhost"
+    HOST = "127.0.0.1"
     PORT = 16161
 
     def __init__(self):
@@ -307,6 +308,9 @@ def clearArtifactQueue():
 
 MAX_OPENED_ARTIFACTS = 10
 
+# 全局缓存，目前只缓存了exported_activities，加载新的apk文件时将被清除。
+apk_cached_data = {}
+
 def getOrLoadApk(filepath):
     engctx = CTX.getEnginesContext()
 
@@ -318,10 +322,9 @@ def getOrLoadApk(filepath):
         raise Exception("File not found: %s" % filepath)
     # Create a project
     project = engctx.loadProject('MCPPluginProject')
-    base_name = os.path.basename(filepath)
     correspondingArtifact = None
     for artifact in project.getLiveArtifacts():
-        if artifact.getArtifact().getName() == base_name:
+        if artifact.getArtifact().getName() == filepath:
             # If the artifact is already loaded, return it
             correspondingArtifact = artifact
             break
@@ -332,17 +335,21 @@ def getOrLoadApk(filepath):
             oldestArtifact = getArtifactFromQueue()
             if oldestArtifact:
                 # unload the artifact
-                print('Unloading artifact: %s because queue size limit exeeded' % oldestArtifact.getArtifact().getName())
+                oldestArtifactName = oldestArtifact.getArtifact().getName()
+                print('Unloading artifact: %s because queue size limit exeeded' % oldestArtifactName)
                 RuntimeProjectUtil.destroyLiveArtifact(oldestArtifact)
 
-        correspondingArtifact = project.processArtifact(Artifact(base_name, FileInput(File(filepath))))
+        # Fix: 直接用filepath而不是basename作为Artifact的名称，否则如果加载了多个同名不同路径的apk，会出现问题。
+        correspondingArtifact = project.processArtifact(Artifact(filepath, FileInput(File(filepath))))
         addArtifactToQueue(correspondingArtifact)
+        apk_cached_data.clear()
     
     unit = correspondingArtifact.getMainUnit()
     if isinstance(unit, IApkUnit):
-            # If the unit is already loaded, return it
-            return unit    
+        # If the unit is already loaded, return it
+        return unit    
     return None
+
 
 @jsonrpc
 def get_manifest(filepath):
@@ -354,9 +361,12 @@ def get_manifest(filepath):
     #get base name
     
     if apk is None:
-        # if the input is not apk (e.g. a jar or single dex, )
+        # if the input is not apk (e.g. a jar or single dex)
         # assume it runs in system context
         return None
+    
+    if 'manifest' in apk_cached_data:
+        return apk_cached_data['manifest']
     
     man = apk.getManifest()
     if man is None:
@@ -364,7 +374,99 @@ def get_manifest(filepath):
     doc = man.getFormatter().getPresentation(0).getDocument()
     text = TextDocumentUtil.getText(doc)
     #engctx.unloadProjects(True)
+    apk_cached_data['manifest'] = text
     return text
+
+
+@jsonrpc
+def get_all_exported_activities(filepath):
+    """
+    Get all exported Activity components from the APK and normalize their class names.
+
+    An Activity is considered "exported" if:
+    - It explicitly sets android:exported="true", or
+    - It omits android:exported but includes an <intent-filter> (implicitly exported)
+
+    Note:
+    - If android:exported="false" is explicitly set, the Activity is NOT exported, even if it has intent-filters.
+
+    Class name normalization rules:
+    - If it starts with '.', prepend the package name (e.g., .MainActivity -> com.example.app.MainActivity)
+    - If it has no '.', include both the original and package-prefixed versions
+    - If it’s a full class name, keep as-is
+
+    Returns a list of fully qualified exported Activity class names (for use in decompilation, etc.)
+    """
+    if not filepath:
+        return []
+    
+    from xml.etree import ElementTree as ET
+
+    manifest_text = get_manifest(filepath)
+
+    if not manifest_text:
+        return []
+    
+    # 首先尝试在缓存中取
+    if 'exported_activities' in apk_cached_data:
+        return apk_cached_data['exported_activities']
+
+    try:
+        root = ET.fromstring(manifest_text.encode('utf-8'))
+    except Exception as e:
+        print("[MCP] Error parsing manifest:", e)
+        return []
+
+    ANDROID_NS = 'http://schemas.android.com/apk/res/android'
+    exported_activities = []
+
+    # 获取包名
+    package_name = root.attrib.get('package', '').strip()
+
+    # 查找 <application> 节点
+    app_node = root.find('application')
+    if app_node is None:
+        return []
+
+    for activity in app_node.findall('activity'):
+        name = activity.attrib.get('{' + ANDROID_NS + '}name')
+        exported = activity.attrib.get('{' + ANDROID_NS + '}exported')
+        has_intent_filter = len(activity.findall('intent-filter')) > 0
+
+        if not name:
+            continue
+
+        if exported == "true" or (exported is None and has_intent_filter):
+            normalized = set()
+
+            if name.startswith('.'):
+                normalized.add(package_name + name)
+            elif '.' not in name:
+                normalized.add(name)
+                normalized.add(package_name + '.' + name)
+            else:
+                normalized.add(name)
+
+            exported_activities.extend(normalized)
+    # 缓存导出Activity数据
+    apk_cached_data['exported_activities'] = exported_activities
+    return exported_activities
+
+
+@jsonrpc
+def get_exported_activities_count(filepath):
+    exported_activities = get_all_exported_activities(filepath)
+    return len(exported_activities)
+
+
+@jsonrpc
+def get_an_exported_activity_by_index(filepath, index):
+    exported_activities = get_all_exported_activities(filepath)
+    if index >= 0 and index < len(exported_activities):
+        return exported_activities[index]
+    else:
+        return None
+
 
 @jsonrpc
 def get_method_decompiled_code(filepath, method_signature):
@@ -389,6 +491,10 @@ def get_method_decompiled_code(filepath, method_signature):
     if not decomp:
         print('Cannot acquire decompiler for unit: %s' % decomp)
         return
+    
+    if method is None:
+        print('[MCP] Class not found: %s' % method_signature)
+        return None
 
     if not decomp.decompileMethod(method.getSignature()):
         print('Failed decompiling method')
@@ -417,19 +523,22 @@ def get_class_decompiled_code(filepath, class_signature):
     
     codeUnit = apk.getDex()
     clazz = codeUnit.getClass(class_signature)
+    if clazz is None:
+        print('[MCP] Class not found: %s' % class_signature)
+        return None
+
     decomp = DecompilerHelper.getDecompiler(codeUnit)
     if not decomp:
-        print('Cannot acquire decompiler for unit: %s' % decomp)
-        return
+        print('Cannot acquire decompiler for unit: %s' % codeUnit)
+        return None
 
     if not decomp.decompileClass(clazz.getSignature()):
-        print('Failed decompiling method')
-        return
+        print('Failed decompiling class: %s' % class_signature)
+        return None
 
     text = decomp.getDecompiledClassText(clazz.getSignature())
     return text
 
-from com.pnfsoftware.jeb.core.actions import ActionXrefsData, Actions, ActionContext
 
 @jsonrpc
 def get_method_callers(filepath, method_signature):
@@ -456,7 +565,7 @@ def get_method_callers(filepath, method_signature):
             ret.append((actionXrefsData.getAddresses()[i], actionXrefsData.getDetails()[i]))
     return ret
 
-from com.pnfsoftware.jeb.core.actions import Actions, ActionContext, ActionOverridesData
+
 @jsonrpc
 def get_method_overrides(filepath, method_signature):
     """
@@ -481,6 +590,92 @@ def get_method_overrides(filepath, method_signature):
         for i in range(data.getAddresses().size()):
             ret.append((data.getAddresses()[i], data.getDetails()[i]))
     return ret
+
+
+@jsonrpc
+def get_superclass(filepath, class_signature):
+    if not filepath or not class_signature:
+        return None
+
+    apk = getOrLoadApk(filepath)
+    if apk is None:
+        return None
+
+    codeUnit = apk.getDex()
+    clazz = codeUnit.getClass(class_signature)
+    if clazz is None:
+        return None
+
+    return clazz.getSupertypeSignature(True)
+
+
+@jsonrpc
+def get_interfaces(filepath, class_signature):
+    if not filepath or not class_signature:
+        return None
+
+    apk = getOrLoadApk(filepath)
+    if apk is None:
+        return None
+
+    codeUnit = apk.getDex()
+    clazz = codeUnit.getClass(class_signature)
+    if clazz is None:
+        return None
+    
+    interfaces = []
+    interfaces_array = clazz.getInterfaceSignatures(True)
+    for interface in interfaces_array:
+        interfaces.append(interface)
+
+    return interfaces
+
+
+@jsonrpc
+def get_class_methods(filepath, class_signature):
+    if not filepath or not class_signature:
+        return None
+
+    apk = getOrLoadApk(filepath)
+    if apk is None:
+        return None
+
+    codeUnit = apk.getDex()
+    clazz = codeUnit.getClass(class_signature)
+    if clazz is None:
+        return None
+    
+    method_signatures = []
+    dex_methods = clazz.getMethods()
+    for method in dex_methods:
+        if method:
+            method_signatures.append(method.getSignature(True))
+
+    return method_signatures
+
+
+@jsonrpc
+def get_class_fields(filepath, class_signature):
+    if not filepath or not class_signature:
+        return None
+
+    apk = getOrLoadApk(filepath)
+    if apk is None:
+        return None
+
+    codeUnit = apk.getDex()
+    clazz = codeUnit.getClass(class_signature)
+    if clazz is None:
+        return None
+    
+    field_signatures = []
+    dex_field = clazz.getMethods()
+    for field in dex_field:
+        if field:
+            field_signatures.append(field.getSignature(True))
+
+    return field_signatures
+
 
 CTX = None
 class MCP(IScript):
