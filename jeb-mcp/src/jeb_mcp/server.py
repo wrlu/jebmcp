@@ -1,10 +1,8 @@
-import os
-import sys
-import ast
-import json
-import shutil
 import argparse
 import http.client
+import json
+import os
+import sys
 
 from fastmcp import FastMCP
 
@@ -12,6 +10,7 @@ from fastmcp import FastMCP
 mcp = FastMCP("github.com/flankerhqd/jeb-pro-mcp", log_level="ERROR")
 
 jsonrpc_request_id = 1
+
 
 def make_jsonrpc_request(method: str, *params):
     """Make a JSON-RPC request to the JEB plugin"""
@@ -26,9 +25,12 @@ def make_jsonrpc_request(method: str, *params):
     jsonrpc_request_id += 1
 
     try:
-        conn.request("POST", "/mcp", json.dumps(request), {
-            "Content-Type": "application/json"
-        })
+        conn.request(
+            "POST",
+            "/mcp",
+            json.dumps(request),
+            {"Content-Type": "application/json"},
+        )
         response = conn.getresponse()
         data = json.loads(response.read().decode())
 
@@ -51,13 +53,14 @@ def make_jsonrpc_request(method: str, *params):
     finally:
         conn.close()
 
+
 @mcp.tool()
 def check_connection() -> str:
     """Check if the JEB plugin is running"""
     try:
         metadata = make_jsonrpc_request("ping")
-        return f"Successfully connected to JEB Pro"
-    except Exception as e:
+        return "Successfully connected to JEB Pro"
+    except Exception:
         if sys.platform == "darwin":
             shortcut = "Ctrl+Option+M"
         else:
@@ -65,20 +68,24 @@ def check_connection() -> str:
         return f"Failed to connect to JEB Pro! Did you run Edit -> Scripts -> MCP ({shortcut}) to start the server?"
 
 
-
 SCRIPT_DIR = os.path.dirname(os.path.realpath(__file__))
 JEB_PLUGIN_PY = os.path.join(SCRIPT_DIR, "MCP.py")
 GENERATED_PY = os.path.join(SCRIPT_DIR, "server_generated.py")
 
+
 def generate():
-    with open(GENERATED_PY, "r") as f:
+    with open(GENERATED_PY, "r", encoding="utf8") as f:
         code = f.read()
         exec(compile(code, GENERATED_PY, "exec"))
 
+
 generate()
+
+
 def main():
     argparse.ArgumentParser(description="JEB Pro MCP Server")
     mcp.run(transport="stdio")
+
 
 if __name__ == "__main__":
     main()
