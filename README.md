@@ -1,10 +1,28 @@
 [![MseeP.ai Security Assessment Badge](https://mseep.net/pr/flankerhqd-jebmcp-badge.png)](https://mseep.ai/app/flankerhqd-jebmcp)
 
 A quick-and-dirty MCP server&Plugin for JEB Pro.
-Tested on Cline.
+Tested on Cline & Cursor & RooCode.
 
 Reference: https://github.com/mrexodia/ida-pro-mcp
 
+# Installation
+
+## Requirements
+```
+Python >= 3.11
+uv: https://docs.astral.sh/uv/getting-started/installation/
+```
+## Usage
+- COPY the src/jeb_mcp/MCP.py to $JEB_INSTALLATION_DIR/scripts. Make sure the jython file is also present
+- Choose and Start the script in JEB GUI (`File->Scripts->Scripts selector...`), check for desired output:
+```bash
+[MCP] Plugin loaded
+[MCP] Plugin running
+[MCP] Server started at http://127.0.0.1:16161
+```
+- Add this MCP server's config in cline/cursor/etc, as in the sample
+
+# 安装
 要求：
 ```
 安装 python3.11及以上版本
@@ -108,4 +126,6 @@ Reference: https://github.com/mrexodia/ida-pro-mcp
 ```
 
 
+# Demo
+## DEMO for using JEB-MCP to analyze vulnerabilities in APK
 ![jebmcp](https://github.com/user-attachments/assets/28ea1c0e-76a7-4ed2-84b6-17645f671156)

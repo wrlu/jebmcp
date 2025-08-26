@@ -4,7 +4,7 @@
         "command": "uv",
         "args": [
           "--directory",
-          "jebmcp/jeb-mcp/src/jeb_mcp",
+          "jebmcp/src/jeb_mcp",
           "run",
           "server.py"
         ],
@@ -24,7 +24,10 @@
           "get_superclass",
           "get_interfaces",
           "get_class_methods",
-          "get_class_fields"
+          "get_class_fields",
+          "rename_class_name",
+          "rename_method_name",
+          "rename_class_field"
         ]
       }
     }
