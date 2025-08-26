@@ -1,65 +1,84 @@
 # -*- coding: utf-8 -*-
-import sys
-
-from com.pnfsoftware.jeb.client.api import IScript
-from com.pnfsoftware.jeb.core.units import INativeCodeUnit
-from com.pnfsoftware.jeb.core.units.code.android import IDexUnit
-from com.pnfsoftware.jeb.core.util import DecompilerHelper
-
-from com.pnfsoftware.jeb.client.api import IScript, IconType, ButtonGroupType
-from com.pnfsoftware.jeb.core import JebCoreService, ICoreContext, Artifact, RuntimeProjectUtil
-
-from com.pnfsoftware.jeb.core.input import FileInput
-from com.pnfsoftware.jeb.core.units import INativeCodeUnit
-from com.pnfsoftware.jeb.core.units.code.android import IDexUnit
-from com.pnfsoftware.jeb.core.units.code import ICodeUnit
-from com.pnfsoftware.jeb.core.output.text import ITextDocument
-from com.pnfsoftware.jeb.core.util import DecompilerHelper
-from com.pnfsoftware.jeb.core.units.code.android import IApkUnit
-from com.pnfsoftware.jeb.core.output.text import TextDocumentUtil
-from com.pnfsoftware.jeb.core.units.code.asm.decompiler import INativeSourceUnit
-from com.pnfsoftware.jeb.core.actions import ActionXrefsData, Actions, ActionContext, ActionOverridesData
-from java.io import File
 
 import json
-import struct
+import os
 import threading
 import traceback
-import os
+
+from com.pnfsoftware.jeb.client.api import IScript
+from com.pnfsoftware.jeb.core import Artifact, RuntimeProjectUtil
+from com.pnfsoftware.jeb.core.actions import (
+    ActionContext,
+    ActionOverridesData,
+    Actions,
+    ActionXrefsData,
+)
+from com.pnfsoftware.jeb.core.input import FileInput
+from com.pnfsoftware.jeb.core.output.text import TextDocumentUtil
+from com.pnfsoftware.jeb.core.units.code.android import IApkUnit
+from com.pnfsoftware.jeb.core.util import DecompilerHelper
+from java.io import File
+
 # Python 2.7 changes - use urlparse from urlparse module instead of urllib.parse
 from urlparse import urlparse
+
 # Python 2.7 doesn't have typing, so we'll define our own minimal substitutes
 # and ignore most type annotations
 
+
 # Mock typing classes/functions for type annotation compatibility
-class Any(object): pass
-class Callable(object): pass
+class Any(object):
+    pass
+
+
+class Callable(object):
+    pass
+
+
 def get_type_hints(func):
     """Mock for get_type_hints that works with Python 2.7 functions"""
     hints = {}
-    
+
     # Try to get annotations (modern Python way)
-    if hasattr(func, '__annotations__'):
-        hints.update(getattr(func, '__annotations__', {}))
-    
+    if hasattr(func, "__annotations__"):
+        hints.update(getattr(func, "__annotations__", {}))
+
     # For Python 2.7, inspect the function signature
     import inspect
+
     args, varargs, keywords, defaults = inspect.getargspec(func)
-    
+
     # Add all positional parameters with Any type
     for arg in args:
         if arg not in hints:
             hints[arg] = Any
-            
+
     return hints
-class TypedDict(dict): pass
-class Optional(object): pass
-class Annotated(object): pass
-class TypeVar(object): pass
-class Generic(object): pass
+
+
+class TypedDict(dict):
+    pass
+
+
+class Optional(object):
+    pass
+
+
+class Annotated(object):
+    pass
+
+
+class TypeVar(object):
+    pass
+
+
+class Generic(object):
+    pass
+
 
 # Use BaseHTTPServer instead of http.server
 import BaseHTTPServer
+
 
 class JSONRPCError(Exception):
     def __init__(self, code, message, data=None):
@@ -67,6 +86,7 @@ class JSONRPCError(Exception):
         self.code = code
         self.message = message
         self.data = data
+
 
 class RPCRegistry(object):
     def __init__(self):
@@ -84,12 +104,17 @@ class RPCRegistry(object):
         hints = get_type_hints(func)
 
         # Remove return annotation if present
-        if 'return' in hints:
+        if "return" in hints:
             hints.pop("return", None)
 
         if isinstance(params, list):
             if len(params) != len(hints):
-                raise JSONRPCError(-32602, "Invalid params: expected {0} arguments, got {1}".format(len(hints), len(params)))
+                raise JSONRPCError(
+                    -32602,
+                    "Invalid params: expected {0} arguments, got {1}".format(
+                        len(hints), len(params)
+                    ),
+                )
 
             # Python 2.7 doesn't support zip with items() directly
             # Convert to simpler validation approach
@@ -107,7 +132,10 @@ class RPCRegistry(object):
         elif isinstance(params, dict):
             # Simplify type validation for Python 2.7
             if set(params.keys()) != set(hints.keys()):
-                raise JSONRPCError(-32602, "Invalid params: expected {0}".format(list(hints.keys())))
+                raise JSONRPCError(
+                    -32602,
+                    "Invalid params: expected {0}".format(list(hints.keys())),
+                )
 
             # Validate and convert parameters
             converted_params = {}
@@ -118,23 +146,25 @@ class RPCRegistry(object):
 
             return func(**converted_params)
         else:
-            raise JSONRPCError(-32600, "Invalid Request: params must be array or object")
+            raise JSONRPCError(
+                -32600, "Invalid Request: params must be array or object"
+            )
+
 
 rpc_registry = RPCRegistry()
+
 
 def jsonrpc(func):
     """Decorator to register a function as a JSON-RPC method"""
     global rpc_registry
     return rpc_registry.register(func)
 
+
 class JSONRPCRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     def send_jsonrpc_error(self, code, message, id=None):
         response = {
             "jsonrpc": "2.0",
-            "error": {
-                "code": code,
-                "message": message
-            }
+            "error": {"code": code, "message": message},
         }
         if id is not None:
             response["id"] = id
@@ -155,20 +185,22 @@ class JSONRPCRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 
         content_length = int(self.headers.get("Content-Length", 0))
         if content_length == 0:
-            self.send_jsonrpc_error(-32700, "Parse error: missing request body", None)
+            self.send_jsonrpc_error(
+                -32700, "Parse error: missing request body", None
+            )
             return
 
         request_body = self.rfile.read(content_length)
         try:
             request = json.loads(request_body)
-        except ValueError:  # Python 2.7 uses ValueError instead of JSONDecodeError
+        except (
+            ValueError
+        ):  # Python 2.7 uses ValueError instead of JSONDecodeError
             self.send_jsonrpc_error(-32700, "Parse error: invalid JSON", None)
             return
 
         # Prepare the response
-        response = {
-            "jsonrpc": "2.0"
-        }
+        response = {"jsonrpc": "2.0"}
         if request.get("id") is not None:
             response["id"] = request.get("id")
 
@@ -182,17 +214,16 @@ class JSONRPCRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 raise JSONRPCError(-32600, "Method not specified")
 
             # Dispatch the method
-            result = rpc_registry.dispatch(request["method"], request.get("params", []))
+            result = rpc_registry.dispatch(
+                request["method"], request.get("params", [])
+            )
             response["result"] = result
 
         except JSONRPCError as e:
-            response["error"] = {
-                "code": e.code,
-                "message": e.message
-            }
+            response["error"] = {"code": e.code, "message": e.message}
             if e.data is not None:
                 response["error"]["data"] = e.data
-        except Exception as e:
+        except Exception:
             traceback.print_exc()
             response["error"] = {
                 "code": -32603,
@@ -202,15 +233,17 @@ class JSONRPCRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 
         try:
             response_body = json.dumps(response)
-        except Exception as e:
+        except Exception:
             traceback.print_exc()
-            response_body = json.dumps({
-                "error": {
-                    "code": -32603,
-                    "message": "Internal error (please report a bug)",
-                    "data": traceback.format_exc(),
+            response_body = json.dumps(
+                {
+                    "error": {
+                        "code": -32603,
+                        "message": "Internal error (please report a bug)",
+                        "data": traceback.format_exc(),
+                    }
                 }
-            })
+            )
 
         self.send_response(200)
         self.send_header("Content-Type", "application/json")
@@ -222,8 +255,10 @@ class JSONRPCRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         # Suppress logging
         pass
 
+
 class MCPHTTPServer(BaseHTTPServer.HTTPServer):
     allow_reuse_address = False
+
 
 class Server(object):  # Use explicit inheritance from object for py2
     HOST = "127.0.0.1"
@@ -261,11 +296,19 @@ class Server(object):  # Use explicit inheritance from object for py2
     def _run_server(self):
         try:
             # Create server in the thread to handle binding
-            self.server = MCPHTTPServer((Server.HOST, Server.PORT), JSONRPCRequestHandler)
-            print("[MCP] Server started at http://{0}:{1}".format(Server.HOST, Server.PORT))
+            self.server = MCPHTTPServer(
+                (Server.HOST, Server.PORT), JSONRPCRequestHandler
+            )
+            print(
+                "[MCP] Server started at http://{0}:{1}".format(
+                    Server.HOST, Server.PORT
+                )
+            )
             self.server.serve_forever()
         except OSError as e:
-            if e.errno == 98 or e.errno == 10048:  # Port already in use (Linux/Windows)
+            if (
+                e.errno == 98 or e.errno == 10048
+            ):  # Port already in use (Linux/Windows)
                 print("[MCP] Error: Port 13337 is already in use")
             else:
                 print("[MCP] Server error: {0}".format(e))
@@ -275,25 +318,26 @@ class Server(object):  # Use explicit inheritance from object for py2
         finally:
             self.running = False
 
+
 # A module that helps with writing thread safe ida code.
 # Based on:
 # https://web.archive.org/web/20160305190440/http://www.williballenthin.com/blog/2015/09/04/idapython-synchronization-decorator/
-import logging
-import Queue as queue  # Python 2.7 uses Queue instead of queue
-import traceback
-import functools
+
 
 @jsonrpc
 def ping():
     """Do a simple ping to check server is alive and running"""
     return "pong"
 
+
 # implement a FIFO queue to store the artifacts
 artifactQueue = list()
+
 
 def addArtifactToQueue(artifact):
     """Add an artifact to the queue"""
     artifactQueue.append(artifact)
+
 
 def getArtifactFromQueue():
     """Get an artifact from the queue"""
@@ -301,27 +345,30 @@ def getArtifactFromQueue():
         return artifactQueue.pop(0)
     return None
 
+
 def clearArtifactQueue():
     """Clear the artifact queue"""
     global artifactQueue
     artifactQueue = list()
+
 
 MAX_OPENED_ARTIFACTS = 10
 
 # 全局缓存，目前只缓存了exported_activities，加载新的apk文件时将被清除。
 apk_cached_data = {}
 
+
 def getOrLoadApk(filepath):
     engctx = CTX.getEnginesContext()
 
     if not engctx:
-        print('Back-end engines not initialized')
+        print("Back-end engines not initialized")
         return
 
     if not os.path.exists(filepath):
         raise Exception("File not found: %s" % filepath)
     # Create a project
-    project = engctx.loadProject('MCPPluginProject')
+    project = engctx.loadProject("MCPPluginProject")
     correspondingArtifact = None
     for artifact in project.getLiveArtifacts():
         if artifact.getArtifact().getName() == filepath:
@@ -336,18 +383,23 @@ def getOrLoadApk(filepath):
             if oldestArtifact:
                 # unload the artifact
                 oldestArtifactName = oldestArtifact.getArtifact().getName()
-                print('Unloading artifact: %s because queue size limit exeeded' % oldestArtifactName)
+                print(
+                    "Unloading artifact: %s because queue size limit exeeded"
+                    % oldestArtifactName
+                )
                 RuntimeProjectUtil.destroyLiveArtifact(oldestArtifact)
 
         # Fix: 直接用filepath而不是basename作为Artifact的名称，否则如果加载了多个同名不同路径的apk，会出现问题。
-        correspondingArtifact = project.processArtifact(Artifact(filepath, FileInput(File(filepath))))
+        correspondingArtifact = project.processArtifact(
+            Artifact(filepath, FileInput(File(filepath)))
+        )
         addArtifactToQueue(correspondingArtifact)
         apk_cached_data.clear()
-    
+
     unit = correspondingArtifact.getMainUnit()
     if isinstance(unit, IApkUnit):
         # If the unit is already loaded, return it
-        return unit    
+        return unit
     return None
 
 
@@ -357,24 +409,26 @@ def get_manifest(filepath):
     if not filepath:
         return None
 
-    apk = getOrLoadApk(filepath)  # Fixed: use getOrLoadApk function to load the APK
-    #get base name
-    
+    apk = getOrLoadApk(
+        filepath
+    )  # Fixed: use getOrLoadApk function to load the APK
+    # get base name
+
     if apk is None:
         # if the input is not apk (e.g. a jar or single dex)
         # assume it runs in system context
         return None
-    
-    if 'manifest' in apk_cached_data:
-        return apk_cached_data['manifest']
-    
+
+    if "manifest" in apk_cached_data:
+        return apk_cached_data["manifest"]
+
     man = apk.getManifest()
     if man is None:
         return None
     doc = man.getFormatter().getPresentation(0).getDocument()
     text = TextDocumentUtil.getText(doc)
-    #engctx.unloadProjects(True)
-    apk_cached_data['manifest'] = text
+    # engctx.unloadProjects(True)
+    apk_cached_data["manifest"] = text
     return text
 
 
@@ -399,39 +453,39 @@ def get_all_exported_activities(filepath):
     """
     if not filepath:
         return []
-    
+
     from xml.etree import ElementTree as ET
 
     manifest_text = get_manifest(filepath)
 
     if not manifest_text:
         return []
-    
+
     # 首先尝试在缓存中取
-    if 'exported_activities' in apk_cached_data:
-        return apk_cached_data['exported_activities']
+    if "exported_activities" in apk_cached_data:
+        return apk_cached_data["exported_activities"]
 
     try:
-        root = ET.fromstring(manifest_text.encode('utf-8'))
+        root = ET.fromstring(manifest_text.encode("utf-8"))
     except Exception as e:
         print("[MCP] Error parsing manifest:", e)
         return []
 
-    ANDROID_NS = 'http://schemas.android.com/apk/res/android'
+    ANDROID_NS = "http://schemas.android.com/apk/res/android"
     exported_activities = []
 
     # 获取包名
-    package_name = root.attrib.get('package', '').strip()
+    package_name = root.attrib.get("package", "").strip()
 
     # 查找 <application> 节点
-    app_node = root.find('application')
+    app_node = root.find("application")
     if app_node is None:
         return []
 
-    for activity in app_node.findall('activity'):
-        name = activity.attrib.get('{' + ANDROID_NS + '}name')
-        exported = activity.attrib.get('{' + ANDROID_NS + '}exported')
-        has_intent_filter = len(activity.findall('intent-filter')) > 0
+    for activity in app_node.findall("activity"):
+        name = activity.attrib.get("{" + ANDROID_NS + "}name")
+        exported = activity.attrib.get("{" + ANDROID_NS + "}exported")
+        has_intent_filter = len(activity.findall("intent-filter")) > 0
 
         if not name:
             continue
@@ -439,17 +493,17 @@ def get_all_exported_activities(filepath):
         if exported == "true" or (exported is None and has_intent_filter):
             normalized = set()
 
-            if name.startswith('.'):
+            if name.startswith("."):
                 normalized.add(package_name + name)
-            elif '.' not in name:
+            elif "." not in name:
                 normalized.add(name)
-                normalized.add(package_name + '.' + name)
+                normalized.add(package_name + "." + name)
             else:
                 normalized.add(name)
 
             exported_activities.extend(normalized)
     # 缓存导出Activity数据
-    apk_cached_data['exported_activities'] = exported_activities
+    apk_cached_data["exported_activities"] = exported_activities
     return exported_activities
 
 
@@ -484,20 +538,20 @@ def get_method_decompiled_code(filepath, method_signature):
     apk = getOrLoadApk(filepath)
     if apk is None:
         return None
-    
+
     codeUnit = apk.getDex()
     method = codeUnit.getMethod(method_signature)
     decomp = DecompilerHelper.getDecompiler(codeUnit)
     if not decomp:
-        print('Cannot acquire decompiler for unit: %s' % decomp)
+        print("Cannot acquire decompiler for unit: %s" % decomp)
         return
-    
+
     if method is None:
-        print('[MCP] Class not found: %s' % method_signature)
+        print("[MCP] Class not found: %s" % method_signature)
         return None
 
     if not decomp.decompileMethod(method.getSignature()):
-        print('Failed decompiling method')
+        print("Failed decompiling method")
         return
 
     text = decomp.getDecompiledMethodText(method.getSignature())
@@ -520,20 +574,20 @@ def get_class_decompiled_code(filepath, class_signature):
     apk = getOrLoadApk(filepath)
     if apk is None:
         return None
-    
+
     codeUnit = apk.getDex()
     clazz = codeUnit.getClass(class_signature)
     if clazz is None:
-        print('[MCP] Class not found: %s' % class_signature)
+        print("[MCP] Class not found: %s" % class_signature)
         return None
 
     decomp = DecompilerHelper.getDecompiler(codeUnit)
     if not decomp:
-        print('Cannot acquire decompiler for unit: %s' % codeUnit)
+        print("Cannot acquire decompiler for unit: %s" % codeUnit)
         return None
 
     if not decomp.decompileClass(clazz.getSignature()):
-        print('Failed decompiling class: %s' % class_signature)
+        print("Failed decompiling class: %s" % class_signature)
         return None
 
     text = decomp.getDecompiledClassText(clazz.getSignature())
@@ -552,17 +606,24 @@ def get_method_callers(filepath, method_signature):
     apk = getOrLoadApk(filepath)
     if apk is None:
         return None
-    
+
     ret = []
     codeUnit = apk.getDex()
     method = codeUnit.getMethod(method_signature)
     if method is None:
         raise Exception("Method not found: %s" % method_signature)
     actionXrefsData = ActionXrefsData()
-    actionContext = ActionContext(codeUnit, Actions.QUERY_XREFS, method.getItemId(), None)
-    if codeUnit.prepareExecution(actionContext,actionXrefsData):
+    actionContext = ActionContext(
+        codeUnit, Actions.QUERY_XREFS, method.getItemId(), None
+    )
+    if codeUnit.prepareExecution(actionContext, actionXrefsData):
         for i in range(actionXrefsData.getAddresses().size()):
-            ret.append((actionXrefsData.getAddresses()[i], actionXrefsData.getDetails()[i]))
+            ret.append(
+                (
+                    actionXrefsData.getAddresses()[i],
+                    actionXrefsData.getDetails()[i],
+                )
+            )
     return ret
 
 
@@ -578,15 +639,17 @@ def get_method_overrides(filepath, method_signature):
     apk = getOrLoadApk(filepath)
     if apk is None:
         return None
-    
+
     ret = []
     codeUnit = apk.getDex()
     method = codeUnit.getMethod(method_signature)
     if method is None:
         raise Exception("Method not found: %s" % method_signature)
     data = ActionOverridesData()
-    actionContext = ActionContext(codeUnit, Actions.QUERY_OVERRIDES, method.getItemId(), None)
-    if codeUnit.prepareExecution(actionContext,data):
+    actionContext = ActionContext(
+        codeUnit, Actions.QUERY_OVERRIDES, method.getItemId(), None
+    )
+    if codeUnit.prepareExecution(actionContext, data):
         for i in range(data.getAddresses().size()):
             ret.append((data.getAddresses()[i], data.getDetails()[i]))
     return ret
@@ -622,7 +685,7 @@ def get_interfaces(filepath, class_signature):
     clazz = codeUnit.getClass(class_signature)
     if clazz is None:
         return None
-    
+
     interfaces = []
     interfaces_array = clazz.getInterfaceSignatures(True)
     for interface in interfaces_array:
@@ -644,7 +707,7 @@ def get_class_methods(filepath, class_signature):
     clazz = codeUnit.getClass(class_signature)
     if clazz is None:
         return None
-    
+
     method_signatures = []
     dex_methods = clazz.getMethods()
     for method in dex_methods:
@@ -667,9 +730,9 @@ def get_class_fields(filepath, class_signature):
     clazz = codeUnit.getClass(class_signature)
     if clazz is None:
         return None
-    
+
     field_signatures = []
-    dex_field = clazz.getMethods()
+    dex_field = clazz.getFields()
     for field in dex_field:
         if field:
             field_signatures.append(field.getSignature(True))
@@ -677,9 +740,81 @@ def get_class_fields(filepath, class_signature):
     return field_signatures
 
 
-CTX = None
-class MCP(IScript):
+@jsonrpc
+def rename_class_name(filepath, class_signature, new_class_name):
+    if not filepath or not class_signature:
+        return False
 
+    apk = getOrLoadApk(filepath)
+    if apk is None:
+        return False
+
+    codeUnit = apk.getDex()
+    clazz = codeUnit.getClass(class_signature)
+    if clazz is None:
+        return False
+
+    print("rename class:", clazz.getName(), "to", new_class_name)
+    clazz.setName(new_class_name)
+    return True
+
+
+@jsonrpc
+def rename_method_name(
+    filepath, class_signature, method_signature, new_method_name
+):
+    if not filepath or not class_signature:
+        return False
+
+    apk = getOrLoadApk(filepath)
+    if apk is None:
+        return False
+
+    codeUnit = apk.getDex()
+    clazz = codeUnit.getClass(class_signature)
+    if clazz is None:
+        return False
+    for method in clazz.getMethods():
+        signature = method.getSignature()
+        print("method signature:", signature, "looking for:", method_signature)
+        if signature == method_signature:
+            print("rename method:", method.getName(), "to", new_method_name)
+            method.setName(new_method_name)
+            break
+    return True
+
+
+@jsonrpc
+def rename_class_field(
+    filepath, class_signature, field_signature, new_field_name
+):
+    if not filepath or not class_signature:
+        return False
+
+    apk = getOrLoadApk(filepath)
+    if apk is None:
+        return False
+
+    codeUnit = apk.getDex()
+    clazz = codeUnit.getClass(class_signature)
+    if clazz is None:
+        return False
+
+    dex_field = clazz.getFields()
+    for field in dex_field:
+        signature = field.getSignature()
+        print("method signature:", signature, "looking for:", field_signature)
+        if signature == field_signature:
+            print("rename field:", field.getName(), "to", new_field_name)
+            field.setName(new_field_name)
+            break
+    return True
+
+
+CTX = None
+
+
+class MCP(IScript):
     def __init__(self):
         self.server = Server()
         print("[MCP] Plugin loaded")
