@@ -44,7 +44,7 @@ def make_jsonrpc_request(method: str, *params):
         result = data["result"]
         # NOTE: LLMs do not respond well to empty responses
         if result is None:
-            result = "success"
+            result = "empty"
         return result
     except Exception:
         raise

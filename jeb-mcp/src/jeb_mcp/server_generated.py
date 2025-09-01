@@ -87,7 +87,7 @@ def get_class_decompiled_code(filepath: str, class_signature: str) -> str:
     return make_jsonrpc_request('get_class_decompiled_code', filepath, class_signature)
 
 @mcp.tool()
-def get_method_callers(filepath: str, method_signature: str) -> list[(str,str)]:
+def get_method_callers(filepath: str, method_signature: str) -> list[dict]:
     """
     Get the callers of the given method in the APK file, the passed in method_signature needs to be a fully-qualified signature
     the passed in filepath needs to be a fully-qualified absolute path
@@ -95,7 +95,7 @@ def get_method_callers(filepath: str, method_signature: str) -> list[(str,str)]:
     return make_jsonrpc_request('get_method_callers', filepath, method_signature)
 
 @mcp.tool()
-def get_method_overrides(filepath: str, method_signature: str) -> list[(str,str)]:
+def get_method_overrides(filepath: str, method_signature: str) -> list[dict]:
     """
     Get the overrides of the given method in the APK file, the passed in method_signature needs to be a fully-qualified signature
     the passed in filepath needs to be a fully-qualified absolute path

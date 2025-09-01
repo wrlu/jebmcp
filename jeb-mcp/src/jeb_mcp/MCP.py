@@ -1,5 +1,27 @@
 # -*- coding: utf-8 -*-
 import sys
+import time
+import json
+import struct
+import threading
+import traceback
+import os
+
+# A module that helps with writing thread safe ida code.
+# Based on:
+# https://web.archive.org/web/20160305190440/http://www.williballenthin.com/blog/2015/09/04/idapython-synchronization-decorator/
+import logging
+import traceback
+import functools
+
+# Python 2.7 changes - use urlparse from urlparse module instead of urllib.parse
+from urlparse import urlparse
+# Python 2.7 doesn't have typing, so we'll define our own minimal substitutes
+# and ignore most type annotations
+import Queue as queue  # Python 2.7 uses Queue instead of queue
+# Use BaseHTTPServer instead of http.server
+import BaseHTTPServer
+
 
 from com.pnfsoftware.jeb.client.api import IScript
 from com.pnfsoftware.jeb.core.units import INativeCodeUnit
@@ -20,16 +42,6 @@ from com.pnfsoftware.jeb.core.output.text import TextDocumentUtil
 from com.pnfsoftware.jeb.core.units.code.asm.decompiler import INativeSourceUnit
 from com.pnfsoftware.jeb.core.actions import ActionXrefsData, Actions, ActionContext, ActionOverridesData
 from java.io import File
-
-import json
-import struct
-import threading
-import traceback
-import os
-# Python 2.7 changes - use urlparse from urlparse module instead of urllib.parse
-from urlparse import urlparse
-# Python 2.7 doesn't have typing, so we'll define our own minimal substitutes
-# and ignore most type annotations
 
 # Mock typing classes/functions for type annotation compatibility
 class Any(object): pass
@@ -58,8 +70,6 @@ class Annotated(object): pass
 class TypeVar(object): pass
 class Generic(object): pass
 
-# Use BaseHTTPServer instead of http.server
-import BaseHTTPServer
 
 class JSONRPCError(Exception):
     def __init__(self, code, message, data=None):
@@ -275,13 +285,6 @@ class Server(object):  # Use explicit inheritance from object for py2
         finally:
             self.running = False
 
-# A module that helps with writing thread safe ida code.
-# Based on:
-# https://web.archive.org/web/20160305190440/http://www.williballenthin.com/blog/2015/09/04/idapython-synchronization-decorator/
-import logging
-import Queue as queue  # Python 2.7 uses Queue instead of queue
-import traceback
-import functools
 
 @jsonrpc
 def ping():
@@ -490,7 +493,7 @@ def get_method_decompiled_code(filepath, method_signature):
     decomp = DecompilerHelper.getDecompiler(codeUnit)
     if not decomp:
         print('Cannot acquire decompiler for unit: %s' % decomp)
-        return
+        return None
     
     if method is None:
         print('[MCP] Class not found: %s' % method_signature)
@@ -498,7 +501,7 @@ def get_method_decompiled_code(filepath, method_signature):
 
     if not decomp.decompileMethod(method.getSignature()):
         print('Failed decompiling method')
-        return
+        return None
 
     text = decomp.getDecompiledMethodText(method.getSignature())
     return text
@@ -562,7 +565,10 @@ def get_method_callers(filepath, method_signature):
     actionContext = ActionContext(codeUnit, Actions.QUERY_XREFS, method.getItemId(), None)
     if codeUnit.prepareExecution(actionContext,actionXrefsData):
         for i in range(actionXrefsData.getAddresses().size()):
-            ret.append((actionXrefsData.getAddresses()[i], actionXrefsData.getDetails()[i]))
+            ret.append({
+                "address": actionXrefsData.getAddresses()[i],
+                "details": actionXrefsData.getDetails()[i]
+            })
     return ret
 
 
@@ -588,7 +594,10 @@ def get_method_overrides(filepath, method_signature):
     actionContext = ActionContext(codeUnit, Actions.QUERY_OVERRIDES, method.getItemId(), None)
     if codeUnit.prepareExecution(actionContext,data):
         for i in range(data.getAddresses().size()):
-            ret.append((data.getAddresses()[i], data.getDetails()[i]))
+            ret.append({
+                "address": data.getAddresses()[i],
+                "details": data.getDetails()[i]
+            })
     return ret
 
 
@@ -689,6 +698,11 @@ class MCP(IScript):
         CTX = ctx
         self.server.start()
         print("[MCP] Plugin running")
+        try:
+            while True:
+                time.sleep(10)
+        except KeyboardInterrupt:
+            print("Exiting...")
 
     def term(self):
         self.server.stop()
