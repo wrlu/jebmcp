@@ -71,6 +71,22 @@ def get_method_decompiled_code(filepath: str, method_signature: str) -> str:
     return make_jsonrpc_request('get_method_decompiled_code', filepath, method_signature)
 
 @mcp.tool()
+def get_method_smali_code(filepath: str, method_signature: str) -> str:
+    """Get the smali code of the given method in the APK file, the passed in method_signature needs to be a fully-qualified signature
+    Dex units use Java-style internal addresses to identify items:
+        
+    - package: Lcom/abc/
+    - type: Lcom/abc/Foo;
+    - method: Lcom/abc/Foo;->bar(I[JLjava/Lang/String;)V
+    - field: Lcom/abc/Foo;->flag1:Z
+
+    @param filepath: the path to the APK file
+    @param method_signature: the fully-qualified method signature to decompile, e.g. Lcom/abc/Foo;->bar(I[JLjava/Lang/String;)V
+    the passed in filepath needs to be a fully-qualified absolute path
+    """
+    return make_jsonrpc_request('get_method_smali_code', filepath, method_signature)
+
+@mcp.tool()
 def get_class_decompiled_code(filepath: str, class_signature: str) -> str:
     """Get the decompiled code of the given class in the APK file, the passed in class_signature needs to be a fully-qualified signature
     Dex units use Java-style internal addresses to identify items:
