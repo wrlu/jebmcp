@@ -396,24 +396,24 @@ def get_all_exported_activities(filepath):
     Class name normalization rules:
     - If it starts with '.', prepend the package name (e.g., .MainActivity -> com.example.app.MainActivity)
     - If it has no '.', include both the original and package-prefixed versions
-    - If it’s a full class name, keep as-is
+    - If it's a full class name, keep as-is
 
     Returns a list of fully qualified exported Activity class names (for use in decompilation, etc.)
     """
     if not filepath:
         return []
     
+    # 首先尝试在缓存中取
+    if 'exported_activities' in apk_cached_data:
+        return apk_cached_data['exported_activities']
+    
     from xml.etree import ElementTree as ET
 
-    manifest_text = get_manifest(filepath)
+    manifest_text = get_manifest(filepath).replace("&", "&amp;")
 
     if not manifest_text:
         return []
     
-    # 首先尝试在缓存中取
-    if 'exported_activities' in apk_cached_data:
-        return apk_cached_data['exported_activities']
-
     try:
         root = ET.fromstring(manifest_text.encode('utf-8'))
     except Exception as e:
