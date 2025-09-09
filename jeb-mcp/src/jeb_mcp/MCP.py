@@ -605,6 +605,35 @@ def get_method_callers(filepath, method_signature):
 
 
 @jsonrpc
+def get_field_callers(filepath, field_signature):
+    """
+    Get the callers of the given field in the APK file, the passed in field_signature needs to be a fully-qualified signature
+    note filepath needs to be an absolute path
+    """
+    if not filepath or not field_signature:
+        return None
+
+    apk = getOrLoadApk(filepath)
+    if apk is None:
+        return None
+    
+    ret = []
+    codeUnit = apk.getDex()
+    field = codeUnit.getField(field_signature)
+    if field is None:
+        raise Exception("Field not found: %s" % field_signature)
+    actionXrefsData = ActionXrefsData()
+    actionContext = ActionContext(codeUnit, Actions.QUERY_XREFS, field.getItemId(), None)
+    if codeUnit.prepareExecution(actionContext,actionXrefsData):
+        for i in range(actionXrefsData.getAddresses().size()):
+            ret.append({
+                "address": actionXrefsData.getAddresses()[i],
+                "details": actionXrefsData.getDetails()[i]
+            })
+    return ret
+
+
+@jsonrpc
 def get_method_overrides(filepath, method_signature):
     """
     Get the overrides of the given method in the APK file, the passed in method_signature needs to be a fully-qualified signature
@@ -710,7 +739,7 @@ def get_class_fields(filepath, class_signature):
         return None
     
     field_signatures = []
-    dex_field = clazz.getMethods()
+    dex_field = clazz.getFields()
     for field in dex_field:
         if field:
             field_signatures.append(field.getSignature(True))
