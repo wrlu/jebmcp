@@ -655,10 +655,7 @@ def get_method_overrides(filepath, method_signature):
     actionContext = ActionContext(codeUnit, Actions.QUERY_OVERRIDES, method.getItemId(), None)
     if codeUnit.prepareExecution(actionContext,data):
         for i in range(data.getAddresses().size()):
-            ret.append({
-                "address": data.getAddresses()[i],
-                "details": data.getDetails()[i]
-            })
+            ret.append(data.getAddresses()[i])
     return ret
 
 
