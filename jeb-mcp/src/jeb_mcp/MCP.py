@@ -403,9 +403,7 @@ def get_all_exported_activities(filepath):
     if not filepath:
         return []
     
-    # 首先尝试在缓存中取
-    if 'exported_activities' in apk_cached_data:
-        return apk_cached_data['exported_activities']
+
     
     from xml.etree import ElementTree as ET
 
@@ -413,6 +411,10 @@ def get_all_exported_activities(filepath):
 
     if not manifest_text:
         return []
+    
+    # 首先尝试在缓存中取
+    if 'exported_activities' in apk_cached_data:
+        return apk_cached_data['exported_activities']
     
     try:
         root = ET.fromstring(manifest_text.encode('utf-8'))
