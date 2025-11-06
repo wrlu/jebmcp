@@ -260,8 +260,8 @@ class MCPHTTPServer(BaseHTTPServer.HTTPServer):
 
 
 class Server(object):  # Use explicit inheritance from object for py2
-    HOST = os.getenv("JEB_MCPC_HOST", "127.0.0.1")
-    PORT = int(os.getenv("JEB_MCPC_PORT", "16161"))
+    HOST = os.getenv("JEB_MCP_HOST", "127.0.0.1")
+    PORT = int(os.getenv("JEB_MCP_PORT", "16161"))
 
     def __init__(self):
         self.server = None

@@ -11,11 +11,14 @@ mcp = FastMCP("github.com/flankerhqd/jeb-pro-mcp", log_level="ERROR")
 
 jsonrpc_request_id = 1
 
+HOST = os.getenv("JEB_MCP_HOST", "127.0.0.1")
+PORT = int(os.getenv("JEB_MCP_PORT", "16161"))
+
 
 def make_jsonrpc_request(method: str, *params):
     """Make a JSON-RPC request to the JEB plugin"""
     global jsonrpc_request_id
-    conn = http.client.HTTPConnection("localhost", 16161)
+    conn = http.client.HTTPConnection(HOST, PORT)
     request = {
         "jsonrpc": "2.0",
         "method": method,
