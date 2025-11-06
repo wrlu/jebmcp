@@ -10,12 +10,10 @@ def ping() -> str:
     """Do a simple ping to check server is alive and running"""
     return make_jsonrpc_request("ping")
 
-
 @mcp.tool()
 def get_manifest(filepath: Annotated[str, "full apk file path."]) -> str:
     """Get the manifest of the given APK file in path, the passed in filepath needs to be a fully-qualified absolute path"""
     return make_jsonrpc_request("get_manifest", filepath)
-
 
 @mcp.tool()
 def get_all_exported_activities(
@@ -27,45 +25,25 @@ def get_all_exported_activities(
     This includes activities with:
     - android:exported="true"
     - or no exported attribute but with at least one <intent-filter>
-
+    
     The passed in filepath needs to be a fully-qualified absolute path.
     """
     return make_jsonrpc_request("get_all_exported_activities", filepath)
 
 
 @mcp.tool()
-def get_exported_activities_count(
-    filepath: Annotated[str, "full apk file path."],
-) -> int:
+def get_exported_services(
+    filepath: Annotated[str, "full apk file path."]) -> list[str]:
     """
-    Get exported activities count from the APK manifest.
+    Get all exported service names from the APK manifest.
 
-    This includes activities with:
+    This includes services with:
     - android:exported="true"
     - or no exported attribute but with at least one <intent-filter>
-
+    
     The passed in filepath needs to be a fully-qualified absolute path.
     """
-    return make_jsonrpc_request("get_exported_activities_count", filepath)
-
-
-@mcp.tool()
-def get_an_exported_activity_by_index(
-    filepath: Annotated[str, "full apk file path."],
-    index: Annotated[int, "index"],
-) -> str:
-    """
-    Get an exported activity name by index from the APK manifest.
-
-    This includes activities with:
-    - android:exported="true"
-    - or no exported attribute but with at least one <intent-filter>
-
-    The passed in filepath needs to be a fully-qualified absolute path.
-    """
-    return make_jsonrpc_request(
-        "get_an_exported_activity_by_index", filepath, index
-    )
+    return make_jsonrpc_request("get_exported_services", filepath)
 
 
 @mcp.tool()
@@ -78,7 +56,7 @@ def get_method_decompiled_code(
 ) -> str:
     """Get the decompiled code of the given method in the APK file, the passed in method_signature needs to be a fully-qualified signature
     Dex units use Java-style internal addresses to identify items:
-
+        
     - package: Lcom/abc/
     - type: Lcom/abc/Foo;
     - method: Lcom/abc/Foo;->bar(I[JLjava/Lang/String;)V
@@ -92,6 +70,29 @@ def get_method_decompiled_code(
         "get_method_decompiled_code", filepath, method_signature
     )
 
+
+@mcp.tool()
+def get_method_smali_code(
+    filepath: Annotated[str, "full apk file path."], method_signature: Annotated[
+        str,
+        "the method_signature needs to be a fully-qualified signature e.g. Lcom/abc/Foo;->bar(I[JLjava/Lang/String;)V",
+    ]
+) -> str:
+    """Get the smali code of the given method in the APK file, the passed in method_signature needs to be a fully-qualified signature
+    Dex units use Java-style internal addresses to identify items:
+        
+    - package: Lcom/abc/
+    - type: Lcom/abc/Foo;
+    - method: Lcom/abc/Foo;->bar(I[JLjava/Lang/String;)V
+    - field: Lcom/abc/Foo;->flag1:Z
+
+    @param filepath: the path to the APK file
+    @param method_signature: the fully-qualified method signature to decompile, e.g. Lcom/abc/Foo;->bar(I[JLjava/Lang/String;)V
+    the passed in filepath needs to be a fully-qualified absolute path
+    """
+    return make_jsonrpc_request(
+        "get_method_smali_code", filepath, method_signature
+    )
 
 @mcp.tool()
 def get_class_decompiled_code(
@@ -124,7 +125,7 @@ def get_method_callers(
         str,
         "the method_signature needs to be a fully-qualified signature e.g. Lcom/abc/Foo;->bar(I[JLjava/Lang/String;)V",
     ],
-) -> list[(str, str)]:
+) -> list[dict]:
     """
     Get the callers of the given method in the APK file, the passed in method_signature needs to be a fully-qualified signature
     the passed in filepath needs to be a fully-qualified absolute path
@@ -135,13 +136,29 @@ def get_method_callers(
 
 
 @mcp.tool()
+def get_field_callers(
+    filepath: Annotated[str, "full apk file path."],
+    field_signature: Annotated[
+        str,
+        "the field_signature needs to be a fully-qualified signature e.g. Lcom/abc/Foo;->a",
+    ],) -> list[dict]:
+    """
+    Get the callers of the given field in the APK file, the passed in field_signature needs to be a fully-qualified signature
+    the passed in filepath needs to be a fully-qualified absolute path
+    """
+    return make_jsonrpc_request(
+        "get_field_callers", filepath, field_signature
+    )
+
+
+@mcp.tool()
 def get_method_overrides(
     filepath: Annotated[str, "full apk file path."],
     method_signature: Annotated[
         str,
         "the method_signature needs to be a fully-qualified signature e.g. Lcom/abc/Foo;->bar(I[JLjava/Lang/String;)V",
     ],
-) -> list[(str, str)]:
+) -> list[str]:
     """
     Get the overrides of the given method in the APK file, the passed in method_signature needs to be a fully-qualified signature
     the passed in filepath needs to be a fully-qualified absolute path
@@ -157,7 +174,7 @@ def get_superclass(
     class_signature: Annotated[
         str, "fully-qualified signature of the class, e.g. Lcom/abc/Foo;"
     ],
-) -> list[str]:
+) -> str:
     """
     Get the superclass of the given class in the APK file, the passed in class_signature needs to be a fully-qualified signature
     the passed in filepath needs to be a fully-qualified absolute path
@@ -300,3 +317,18 @@ def rename_class_field(
         field_signature,
         new_field_name,
     )
+
+@mcp.tool()
+def check_java_identifier(
+    filepath: Annotated[str, "full apk file path"],
+    identifier: Annotated[
+        str,
+        "the passed in identifier needs to be a fully-qualified name (like `com.abc.def.Foo`) or a signature;",
+    ],) -> list[dict]:
+    """
+    Check an identifier in the APK file and recognize if this is a class, type, method or field.
+    the passed in identifier needs to be a fully-qualified name (like `com.abc.def.Foo`) or a signature;
+    the passed in filepath needs to be a fully-qualified absolute path;
+    the return value will be a list to tell you the possible type of the passed identifier.
+    """
+    return make_jsonrpc_request("check_java_identifier", filepath, identifier)
