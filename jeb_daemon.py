@@ -9,7 +9,7 @@ jeb_start_cmd = DEMO_JEB_PATH
 
 jeb_run_script_cmd = [
     jeb_start_cmd, "-c", "--srv2", 
-    "--script=" + os.path.join(os.path.dirname(os.path.abspath(__file__)), "jeb-mcp", "src", "jeb_mcp", "MCPc.py")
+    "--script=" + os.path.join(os.path.dirname(os.path.abspath(__file__)), "jeb-mcp", "src", "jeb_mcp", "MCP.py")
 ]
 
 def is_port_in_use(port):
