@@ -3,8 +3,8 @@ import os
 import time
 import socket
 import subprocess
-
-DEMO_JEB_PATH = os.path.join(os.path.expanduser("~") , "Applications", "JEB", "jeb_linux.sh")
+# JEB 5.33.0 has removed the `--script` parameter.
+DEMO_JEB_PATH = os.path.join(os.path.expanduser("~") , "Applications", "JEB-5.30.0", "jeb_linux.sh")
 jeb_start_cmd = DEMO_JEB_PATH
 
 jeb_run_script_cmd = [
@@ -16,7 +16,7 @@ def is_port_in_use(port):
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         try:
             s.settimeout(1)
-            s.connect(('127.0.0.1', port))
+            s.connect(('localhost', port))
             return True
         except (ConnectionRefusedError, OSError):
             return False
