@@ -1,12 +1,9 @@
 {
     "mcpServers": {
       "jeb": {
-        "command": "uv",
+        "command": "python3",
         "args": [
-          "--directory",
-          "jebmcp/jeb-mcp/src/jeb_mcp",
-          "run",
-          "server.py"
+          "jebmcp/jeb-mcp/src/jeb_mcp/server.py"
         ],
         "timeout": 1800,
         "disabled": false,
