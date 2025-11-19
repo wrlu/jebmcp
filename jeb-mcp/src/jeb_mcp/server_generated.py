@@ -32,7 +32,7 @@ def get_all_exported_activities(
 
 
 @mcp.tool()
-def get_exported_services(
+def get_all_exported_services(
     filepath: Annotated[str, "full apk file path."]) -> list[str]:
     """
     Get all exported service names from the APK manifest.
@@ -43,7 +43,7 @@ def get_exported_services(
     
     The passed in filepath needs to be a fully-qualified absolute path.
     """
-    return make_jsonrpc_request("get_exported_services", filepath)
+    return make_jsonrpc_request("get_all_exported_services", filepath)
 
 
 @mcp.tool()

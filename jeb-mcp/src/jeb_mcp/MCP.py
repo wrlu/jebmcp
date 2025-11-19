@@ -518,7 +518,7 @@ def get_all_exported_activities(filepath):
 
 
 @jsonrpc
-def get_exported_services(filepath):
+def get_all_exported_services(filepath):
     """
     Get all exported Service components from the APK and normalize their class names.
 
