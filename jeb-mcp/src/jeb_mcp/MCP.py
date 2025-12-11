@@ -658,40 +658,6 @@ def get_method_smali_code(filepath, method_signature):
 
 
 @jsonrpc
-def get_class_decompiled_code(filepath, class_signature):
-    """Get the decompiled code of the given class in the APK file, the passed in class_signature needs to be a fully-qualified signature
-    Dex units use Java-style internal addresses to identify items:
-    - package: Lcom/abc/
-    - type: Lcom/abc/Foo;
-    - method: Lcom/abc/Foo;->bar(I[JLjava/Lang/String;)V
-    - field: Lcom/abc/Foo;->flag1:Z
-    note filepath needs to be an absolute path
-    """
-    if not filepath or not class_signature:
-        raise JSONRPCError(-1, ErrorMessages.MISSING_PARAM)
-
-    apk = getOrLoadApk(filepath)
-    
-    codeUnit = apk.getDex()
-    clazz = codeUnit.getClass(class_signature)
-    if clazz is None:
-        print('Class not found: %s' % class_signature)
-        raise_class_not_found(class_signature)
-
-    decomp = DecompilerHelper.getDecompiler(codeUnit)
-    if not decomp:
-        print('Cannot acquire decompiler for unit: %s' % codeUnit)
-        return ErrorMessages.DECOMPILE_FAILED
-
-    if not decomp.decompileClass(clazz.getSignature()):
-        print('Failed decompiling class: %s' % class_signature)
-        return ErrorMessages.DECOMPILE_FAILED
-
-    text = decomp.getDecompiledClassText(clazz.getSignature())
-    return text
-
-
-@jsonrpc
 def get_method_callers(filepath, method_signature):
     """
     Get the callers of the given method in the APK file, the passed in method_signature needs to be a fully-qualified signature
