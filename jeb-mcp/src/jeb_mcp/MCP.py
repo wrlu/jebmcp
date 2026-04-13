@@ -6,6 +6,9 @@ import threading
 import traceback
 import re
 import time
+import sys
+import StringIO
+import ast
 
 from com.pnfsoftware.jeb.client.api import IScript
 from com.pnfsoftware.jeb.core import Artifact, RuntimeProjectUtil
@@ -1002,6 +1005,109 @@ def check_java_identifier(filepath, identifier):
                 "parent": "N/A"
             })
     return result
+
+@jsonrpc
+def get_strings(filepath, regex_pattern="", limit=100):
+    """
+    Get hardcoded strings from the APK, filtered by a regex pattern.
+    """
+    if not filepath:
+        raise JSONRPCError(-1, ErrorMessages.MISSING_PARAM)
+        
+    apk = getOrLoadApk(filepath)
+    codeUnit = apk.getDex()
+    
+    pattern = None
+    if regex_pattern:
+        try:
+            pattern = re.compile(regex_pattern)
+        except Exception as e:
+            raise JSONRPCError(-1, "[Error] Invalid regex pattern: " + str(e))
+            
+    results = []
+    strings = codeUnit.getStrings()
+    if strings:
+        for s in strings:
+            val = s.getValue()
+            if val is not None:
+                if not pattern or pattern.search(val):
+                    results.append(val)
+                    if limit > 0 and len(results) >= limit:
+                        break
+                    
+    return results
+
+def _is_safe_code(code):
+    """
+    Check if the Python code contains forbidden imports, calls.
+    """
+    # 拦截可能造成破坏或与 JEB 环境无关的内置库
+    forbidden_imports = set(['os', 'sys', 'subprocess', 'socket', 'urllib', 'urllib2', 'httplib', 'shutil', 'threading', 'multiprocessing', 'commands', 'popen2'])
+    # 拦截危险的文件/代码执行操作
+    forbidden_calls = set(['open', 'eval', 'execfile', '__import__', 'file', 'input', 'raw_input'])
+
+    try:
+        tree = ast.parse(code)
+    except SyntaxError as e:
+        return False, "Syntax error: " + str(e)
+        
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                if alias.name.split('.')[0] in forbidden_imports:
+                    return False, "Forbidden import: " + alias.name
+        elif isinstance(node, ast.ImportFrom):
+            if node.module and node.module.split('.')[0] in forbidden_imports:
+                return False, "Forbidden import: " + node.module
+        elif isinstance(node, ast.Call):
+            if isinstance(node.func, ast.Name) and node.func.id in forbidden_calls:
+                return False, "Forbidden function call: " + node.func.id
+        elif getattr(ast, 'Exec', None) and isinstance(node, getattr(ast, 'Exec')):
+            return False, "Forbidden statement: exec"
+                
+    return True, ""
+
+@jsonrpc
+def execute_python_code(code):
+    """
+    Execute arbitrary Python code in the JEB Jython environment and return the output.
+    """
+    if not code:
+        raise JSONRPCError(-1, ErrorMessages.MISSING_PARAM)
+        
+    is_safe, reason = _is_safe_code(code)
+    if not is_safe:
+        return "Execution blocked for security reasons: " + reason
+        
+    old_stdout = sys.stdout
+    old_stderr = sys.stderr
+    redirected_output = StringIO.StringIO()
+    sys.stdout = redirected_output
+    sys.stderr = redirected_output
+    
+    timeout_seconds = 10.0
+    start_time = time.time()
+
+    def trace_calls(frame, event, arg):
+        if time.time() - start_time > timeout_seconds:
+            raise RuntimeError("Execution timed out (exceeded %s seconds)" % timeout_seconds)
+        return trace_calls
+
+    try:
+        sys.settrace(trace_calls)
+        exec_globals = globals().copy()
+        exec code in exec_globals
+        result = redirected_output.getvalue()
+        if not result:
+            result = "Code executed successfully with no output."
+        return result
+    except Exception as e:
+        return "Error executing code:\n" + traceback.format_exc()
+    finally:
+        sys.settrace(None)
+        sys.stdout = old_stdout
+        sys.stderr = old_stderr
+        redirected_output.close()
 
 
 def raise_class_not_found(class_signature):

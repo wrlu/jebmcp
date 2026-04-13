@@ -309,3 +309,25 @@ def check_java_identifier(
     the return value will be a list to tell you the possible type of the passed identifier.
     """
     return make_jsonrpc_request("check_java_identifier", filepath, identifier)
+
+@mcp.tool()
+def get_strings(
+    filepath: Annotated[str, "full apk file path"],
+    regex_pattern: Annotated[str, "regular expression to filter the strings, e.g., '^https?://'"] = "",
+    limit: Annotated[int, "maximum number of strings to return, set to 0 for no limit"] = 100
+) -> list[str]:
+    """
+    Get hardcoded strings from the APK, filtered by a regular expression.
+    """
+    return make_jsonrpc_request("get_strings", filepath, regex_pattern, limit)
+
+@mcp.tool()
+def execute_python_code(
+    code: Annotated[str, "The Python code (Python 2.7 compatible) to execute in the JEB Jython environment."]
+) -> str:
+    """
+    Execute arbitrary Python code in the JEB Jython environment.
+    This allows interacting directly with the JEB API and the global `CTX` context.
+    Outputs to stdout/stderr are captured and returned.
+    """
+    return make_jsonrpc_request("execute_python_code", code)
