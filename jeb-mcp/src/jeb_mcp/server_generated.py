@@ -15,7 +15,7 @@ def ping() -> str:
 def search_manifest(
     filepath: Annotated[str, "full apk file path."],
     regex_pattern: Annotated[str, "regular expression to search for in the manifest"]
-) -> list[str]:
+) -> list[dict]:
     """Search the content of AndroidManifest.xml using a regular expression and return all matches."""
     return make_jsonrpc_request("search_manifest", filepath, regex_pattern)
 
@@ -36,7 +36,7 @@ def get_assets(
 def search_assets(
     filepath: Annotated[str, "full apk file path"],
     regex_pattern: Annotated[str, "regular expression to search for in asset files"],
-    limit: Annotated[int, "maximum number of files with matches to return, set to 0 for no limit"] = 100
+    limit: Annotated[int, "maximum number of files with matches to return, set to 0 for no limit"] = 20
 ) -> list[dict]:
     """
     Search for a regex pattern in all files within the APK's 'assets' directory.

@@ -448,6 +448,7 @@ def get_manifest(filepath):
 def search_manifest(filepath, regex_pattern):
     """
     Search the content of AndroidManifest.xml using a regular expression.
+    Returns the matched strings along with their full line content and line numbers.
     """
     if not filepath or not regex_pattern:
         raise JSONRPCError(-1, ErrorMessages.MISSING_PARAM)
@@ -457,10 +458,27 @@ def search_manifest(filepath, regex_pattern):
     try:
         # Using re.UNICODE flag for better compatibility in Python 2
         pattern = re.compile(regex_pattern, re.UNICODE)
-        matches = pattern.findall(manifest_text)
-        return matches
     except re.error as e:
         raise JSONRPCError(-1, "Invalid regular expression: " + str(e))
+        
+    results = []
+    
+    if not manifest_text:
+        return results
+
+    lines = manifest_text.splitlines()
+    
+    for line_index, line in enumerate(lines):
+        matches = pattern.findall(line)
+        
+        if matches:
+            results.append({
+                "line_number": line_index + 1,
+                "line_content": line.strip(),
+                "matches": matches
+            })
+            
+    return results
 
 @jsonrpc
 def get_all_exported_activities(filepath):
