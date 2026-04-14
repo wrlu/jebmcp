@@ -837,7 +837,7 @@ def get_use_permissions(filepath):
 
 
 @jsonrpc
-def search_assets(filepath, regex_pattern, limit=100):
+def search_assets(filepath, regex_pattern, limit):
     """
     Search for a regex pattern in all files within the APK's 'assets' directory.
     Text files: +/- 64 characters context.
@@ -1374,7 +1374,7 @@ def check_java_identifier(filepath, identifier):
     return result
 
 @jsonrpc
-def get_strings(filepath, regex_pattern="", limit=100):
+def get_strings(filepath, regex_pattern, limit):
     """
     Get hardcoded strings from the APK, filtered by a regex pattern.
     """

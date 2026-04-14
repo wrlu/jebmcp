@@ -24,7 +24,7 @@ def search_manifest(
 def search_assets(
     filepath: Annotated[str, "full apk file path"],
     regex_pattern: Annotated[str, "regular expression to search for in asset files"],
-    limit: Annotated[int, "maximum number of files with matches to return, set to 0 for no limit"] = 20
+    limit: Annotated[int, "maximum number of files with matches to return, set to 0 for no limit"]
 ) -> list[dict]:
     """
     Search for a regex pattern in all files within the APK's 'assets' directory.
@@ -385,8 +385,8 @@ def check_java_identifier(
 @mcp.tool()
 def get_strings(
     filepath: Annotated[str, "full apk file path"],
-    regex_pattern: Annotated[str, "regular expression to filter the strings, e.g., '^https?://'"] = "",
-    limit: Annotated[int, "maximum number of strings to return, set to 0 for no limit"] = 100
+    regex_pattern: Annotated[str, "regular expression to filter the strings, e.g., '^https?://'"],
+    limit: Annotated[int, "maximum number of strings to return, set to 0 for no limit"]
 ) -> list[dict]:
     """
     Get hardcoded strings from the APK, filtered by a regular expression.
