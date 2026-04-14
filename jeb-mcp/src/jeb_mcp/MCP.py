@@ -1028,8 +1028,10 @@ def get_strings(filepath, regex_pattern="", limit=100):
     strings = codeUnit.getStrings()
     if strings:
         for s in strings:
-            val = s.getValue()
-            if val is not None:
+            try:
+                val = s.getValue()
+                if val is None:
+                    continue
                 if not pattern or pattern.search(val):
                         xrefs = []
                         actionXrefsData = ActionXrefsData()
@@ -1043,6 +1045,9 @@ def get_strings(filepath, regex_pattern="", limit=100):
                         })
                         if limit > 0 and len(results) >= limit:
                             break
+            except Exception as e:
+                print(f"Parse string on {s} failed due to: {e}")
+                continue
                     
     return results
 
