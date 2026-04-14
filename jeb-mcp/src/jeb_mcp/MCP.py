@@ -828,7 +828,8 @@ def get_use_permissions(filepath):
 def search_assets(filepath, regex_pattern, limit=100):
     """
     Search for a regex pattern in all files within the APK's 'assets' directory.
-    This works for both text and binary files.
+    Text files: +/- 64 characters context.
+    Binary files: +/- 64 bytes context.
     """
     if not filepath or not regex_pattern:
         raise JSONRPCError(-1, ErrorMessages.MISSING_PARAM)
@@ -836,14 +837,12 @@ def search_assets(filepath, regex_pattern, limit=100):
     apk = getOrLoadApk(filepath)
 
     try:
-        # In Python 2, regex on byte strings is the default.
         pattern = re.compile(regex_pattern)
     except re.error as e:
         raise JSONRPCError(-1, "Invalid regular expression: " + str(e))
 
     results = []
 
-    # Find the 'Assets' unit
     assets_root_unit = None
     for child_unit in apk.getChildren():
         if child_unit.getName() == 'Assets':
@@ -854,6 +853,8 @@ def search_assets(filepath, regex_pattern, limit=100):
         return []
     
     stack = [(assets_root_unit, '')]
+    
+    text_extensions = set(['.txt', '.json', '.xml', '.html', '.js', '.css', '.properties', '.yaml', '.yml', '.csv', '.ini', '.md'])
     
     while stack:
         if limit > 0 and len(results) >= limit:
@@ -886,97 +887,68 @@ def search_assets(filepath, regex_pattern, limit=100):
                                 break
                             baos.write(buffer, 0, bytes_read)
                         
-                        content = baos.toByteArray().tostring()
+                        byte_content = baos.toByteArray().tostring()
                         
-                        matches = pattern.findall(content)
-                        if matches:
-                            decoded_matches = []
-                            for m in matches:
+                        ext = os.path.splitext(path)[1].lower()
+                        is_text = (ext in text_extensions) or (len(byte_content) > 0 and '\x00' not in byte_content[:1024])
+                        
+                        file_matches = []
+                        
+                        if is_text:
+                            text_content = byte_content.decode('utf-8', 'replace')
+                            
+                            for match in pattern.finditer(text_content):
+                                start = match.start() # 此时为字符索引
+                                end = match.end()
+                                m_str = match.group()
+                                
+                                ctx_start = max(0, start - 64)
+                                ctx_end = min(len(text_content), end + 64)
+                                context_chars = text_content[ctx_start:ctx_end]
+                                
+                                match_info = {
+                                    "match": m_str,
+                                    "offset": start,
+                                    "line_number": text_content.count('\n', 0, start) + 1,
+                                    "context": context_chars.strip()
+                                }
+                                file_matches.append(match_info)
+                        
+                        else:
+                            for match in pattern.finditer(byte_content):
+                                start = match.start()
+                                end = match.end()
+                                m_bytes = match.group()
+                                
                                 try:
-                                    decoded_matches.append(m.decode('utf-8'))
+                                    m_decoded = m_bytes.decode('utf-8')
                                 except UnicodeDecodeError:
-                                    decoded_matches.append(m.encode('hex'))
+                                    m_decoded = m_bytes.encode('hex')
+                                
+                                ctx_start = max(0, start - 64)
+                                ctx_end = min(len(byte_content), end + 64)
+                                context_bytes = byte_content[ctx_start:ctx_end]
+                                
+                                ascii_view = "".join([c if 32 <= ord(c) < 127 else '.' for c in context_bytes])
+                                
+                                match_info = {
+                                    "match": m_decoded,
+                                    "offset": start,
+                                    "context_ascii": ascii_view,
+                                    "context_hex": context_bytes.encode('hex')
+                                }
+                                file_matches.append(match_info)
+                        
+                        if file_matches:
                             results.append({
                                 "asset_path": path,
-                                "matches": decoded_matches
+                                "is_text": is_text,
+                                "matches": file_matches
                             })
+                            
                     finally:
                         stream.close()
     return results
-
-@jsonrpc
-def get_assets(filepath, assets_name):
-    """
-    Get the content of a specific asset file from the APK.
-    Returns the content as a UTF-8 string or a hex-encoded string for binary files.
-    """
-    if not filepath or not assets_name:
-        raise JSONRPCError(-1, ErrorMessages.MISSING_PARAM)
-
-    apk = getOrLoadApk(filepath)
-
-    # Find the 'Assets' unit
-    assets_root_unit = None
-    for child_unit in apk.getChildren():
-        if child_unit.getName() == 'Assets':
-            assets_root_unit = child_unit
-            break
-    
-    if not assets_root_unit:
-        raise JSONRPCError(-1, "Assets folder not found in the APK.")
-    
-    # Normalize path separators and split the path
-    path_parts = assets_name.replace('\\', '/').strip('/').split('/')
-    
-    current_unit = assets_root_unit
-    
-    for part in path_parts:
-        if not part:
-            continue
-        
-        children = current_unit.getChildren()
-        if not children:
-            raise JSONRPCError(-1, ErrorMessages.ASSET_NOT_FOUND)
-
-        found_child = None
-        for child in children:
-            if child.getName() == part:
-                found_child = child
-                break
-        
-        if found_child:
-            current_unit = found_child
-        else:
-            raise JSONRPCError(-1, ErrorMessages.ASSET_NOT_FOUND)
-
-    if current_unit.getChildren():
-        raise JSONRPCError(-1, ErrorMessages.ASSET_IS_DIRECTORY)
-
-    if hasattr(current_unit, "getInput"):
-        input_obj = current_unit.getInput()
-        if input_obj:
-            stream = input_obj.getStream()
-            if stream:
-                try:
-                    baos = ByteArrayOutputStream()
-                    buffer = jarray.zeros(8192, 'b')
-                    
-                    while True:
-                        bytes_read = stream.read(buffer)
-                        if bytes_read == -1:
-                            break
-                        baos.write(buffer, 0, bytes_read)
-                    
-                    content = baos.toByteArray().tostring()
-                    
-                    try:
-                        return content.decode('utf-8')
-                    except UnicodeDecodeError:
-                        return content.encode('hex')
-                finally:
-                    stream.close()
-
-    raise JSONRPCError(-1, "Failed to read asset content.")
 
 
 @jsonrpc

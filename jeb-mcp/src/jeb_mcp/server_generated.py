@@ -16,20 +16,8 @@ def search_manifest(
     filepath: Annotated[str, "full apk file path."],
     regex_pattern: Annotated[str, "regular expression to search for in the manifest"]
 ) -> list[dict]:
-    """Search the content of AndroidManifest.xml using a regular expression and return all matches."""
+    """Returns the matched strings along with their full line content and line numbers."""
     return make_jsonrpc_request("search_manifest", filepath, regex_pattern)
-
-
-@mcp.tool()
-def get_assets(
-    filepath: Annotated[str, "full apk file path"],
-    assets_name: Annotated[str, "the full path of the asset, e.g. 'config/settings.json'"]
-) -> str:
-    """
-    Get the content of a specific asset file from the APK.
-    Returns the content as a UTF-8 string, or a hex-encoded string for binary files.
-    """
-    return make_jsonrpc_request("get_assets", filepath, assets_name)
 
 
 @mcp.tool()
