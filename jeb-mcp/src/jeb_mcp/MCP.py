@@ -9,6 +9,7 @@ import time
 import sys
 import StringIO
 import ast
+import jarray
 
 from com.pnfsoftware.jeb.client.api import IScript
 from com.pnfsoftware.jeb.core import Artifact, RuntimeProjectUtil
@@ -23,6 +24,7 @@ from com.pnfsoftware.jeb.core.output.text import TextDocumentUtil
 from com.pnfsoftware.jeb.core.units.code.android import IApkUnit
 from com.pnfsoftware.jeb.core.util import DecompilerHelper
 from java.io import File
+from java.io import ByteArrayOutputStream
 
 # Python 2.7 changes - use urlparse from urlparse module instead of urllib.parse
 from urlparse import urlparse
@@ -422,7 +424,6 @@ def getOrLoadApk(filepath):
     raise JSONRPCError(-1, ErrorMessages.LOAD_APK_FAILED)
 
 
-@jsonrpc
 def get_manifest(filepath):
     """Get the manifest of the given APK file in path, note filepath needs to be an absolute path"""
     if not filepath:
@@ -439,10 +440,27 @@ def get_manifest(filepath):
     
     doc = man.getFormatter().getPresentation(0).getDocument()
     text = TextDocumentUtil.getText(doc)
-    #engctx.unloadProjects(True)
     apk_cached_data['manifest'] = text
     return text
 
+
+@jsonrpc
+def search_manifest(filepath, regex_pattern):
+    """
+    Search the content of AndroidManifest.xml using a regular expression.
+    """
+    if not filepath or not regex_pattern:
+        raise JSONRPCError(-1, ErrorMessages.MISSING_PARAM)
+    
+    manifest_text = get_manifest(filepath)
+    
+    try:
+        # Using re.UNICODE flag for better compatibility in Python 2
+        pattern = re.compile(regex_pattern, re.UNICODE)
+        matches = pattern.findall(manifest_text)
+        return matches
+    except re.error as e:
+        raise JSONRPCError(-1, "Invalid regular expression: " + str(e))
 
 @jsonrpc
 def get_all_exported_activities(filepath):
@@ -594,6 +612,353 @@ def get_all_exported_services(filepath):
     # 缓存导出Service数据
     apk_cached_data['exported_services'] = exported_services
     return exported_services
+
+
+@jsonrpc
+def get_all_exported_receivers(filepath):
+    """
+    Get all exported Receiver components from the APK and normalize their class names.
+    """
+    if not filepath:
+        raise JSONRPCError(-1, ErrorMessages.MISSING_PARAM)
+    
+    from xml.etree import ElementTree as ET
+
+    manifest_text = get_manifest(filepath)
+    manifest_text = preprocess_manifest_py2(manifest_text)
+
+    if not manifest_text:
+        raise JSONRPCError(-1, ErrorMessages.GET_MANIFEST_FAILED)
+    
+    if 'exported_receivers' in apk_cached_data:
+        return apk_cached_data['exported_receivers']
+
+    try:
+        root = ET.fromstring(manifest_text.encode('utf-8'))
+    except Exception as e:
+        print("[MCP] Error parsing manifest:", e)
+        raise JSONRPCError(-1, ErrorMessages.GET_MANIFEST_FAILED)
+
+    ANDROID_NS = 'http://schemas.android.com/apk/res/android'
+    exported_receivers = []
+
+    package_name = root.attrib.get('package', '').strip()
+
+    app_node = root.find('application')
+    if app_node is None:
+        raise JSONRPCError(-1, ErrorMessages.GET_MANIFEST_FAILED)
+
+    for receiver in app_node.findall('receiver'):
+        name = receiver.attrib.get('{' + ANDROID_NS + '}name')
+        exported = receiver.attrib.get('{' + ANDROID_NS + '}exported')
+        has_intent_filter = len(receiver.findall('intent-filter')) > 0
+
+        if not name:
+            continue
+
+        if exported == "true" or (exported is None and has_intent_filter):
+            normalized = set()
+
+            if name.startswith('.'):
+                normalized.add(package_name + name)
+            elif '.' not in name:
+                normalized.add(name)
+                normalized.add(package_name + '.' + name)
+            else:
+                normalized.add(name)
+
+            exported_receivers.extend(normalized)
+            
+    apk_cached_data['exported_receivers'] = exported_receivers
+    return exported_receivers
+
+
+@jsonrpc
+def get_all_exported_providers(filepath):
+    """
+    Get all exported Provider components from the APK and normalize their class names.
+    """
+    if not filepath:
+        raise JSONRPCError(-1, ErrorMessages.MISSING_PARAM)
+    
+    from xml.etree import ElementTree as ET
+
+    manifest_text = get_manifest(filepath)
+    manifest_text = preprocess_manifest_py2(manifest_text)
+
+    if not manifest_text:
+        raise JSONRPCError(-1, ErrorMessages.GET_MANIFEST_FAILED)
+    
+    if 'exported_providers' in apk_cached_data:
+        return apk_cached_data['exported_providers']
+
+    try:
+        root = ET.fromstring(manifest_text.encode('utf-8'))
+    except Exception as e:
+        print("[MCP] Error parsing manifest:", e)
+        raise JSONRPCError(-1, ErrorMessages.GET_MANIFEST_FAILED)
+
+    ANDROID_NS = 'http://schemas.android.com/apk/res/android'
+    exported_providers = []
+
+    package_name = root.attrib.get('package', '').strip()
+
+    app_node = root.find('application')
+    if app_node is None:
+        raise JSONRPCError(-1, ErrorMessages.GET_MANIFEST_FAILED)
+
+    for provider in app_node.findall('provider'):
+        name = provider.attrib.get('{' + ANDROID_NS + '}name')
+        exported = provider.attrib.get('{' + ANDROID_NS + '}exported')
+        has_intent_filter = len(provider.findall('intent-filter')) > 0
+
+        if not name:
+            continue
+
+        if exported == "true" or (exported is None and has_intent_filter):
+            normalized = set()
+
+            if name.startswith('.'):
+                normalized.add(package_name + name)
+            elif '.' not in name:
+                normalized.add(name)
+                normalized.add(package_name + '.' + name)
+            else:
+                normalized.add(name)
+
+            exported_providers.extend(normalized)
+            
+    apk_cached_data['exported_providers'] = exported_providers
+    return exported_providers
+
+
+@jsonrpc
+def get_permissions(filepath):
+    """
+    Get all defined custom permissions from the APK manifest.
+    """
+    if not filepath:
+        raise JSONRPCError(-1, ErrorMessages.MISSING_PARAM)
+    
+    from xml.etree import ElementTree as ET
+
+    manifest_text = get_manifest(filepath)
+    manifest_text = preprocess_manifest_py2(manifest_text)
+
+    if not manifest_text:
+        raise JSONRPCError(-1, ErrorMessages.GET_MANIFEST_FAILED)
+    
+    if 'permissions' in apk_cached_data:
+        return apk_cached_data['permissions']
+
+    try:
+        root = ET.fromstring(manifest_text.encode('utf-8'))
+    except Exception as e:
+        print("[MCP] Error parsing manifest:", e)
+        raise JSONRPCError(-1, ErrorMessages.GET_MANIFEST_FAILED)
+
+    ANDROID_NS = 'http://schemas.android.com/apk/res/android'
+    permissions = []
+
+    for perm in root.findall('permission'):
+        name = perm.attrib.get('{' + ANDROID_NS + '}name')
+        if name:
+            permissions.append(name)
+            
+    apk_cached_data['permissions'] = permissions
+    return permissions
+
+
+@jsonrpc
+def get_use_permissions(filepath):
+    """
+    Get all requested (uses-permission) permissions from the APK manifest.
+    """
+    if not filepath:
+        raise JSONRPCError(-1, ErrorMessages.MISSING_PARAM)
+    
+    from xml.etree import ElementTree as ET
+
+    manifest_text = get_manifest(filepath)
+    manifest_text = preprocess_manifest_py2(manifest_text)
+
+    if not manifest_text:
+        raise JSONRPCError(-1, ErrorMessages.GET_MANIFEST_FAILED)
+    
+    if 'use_permissions' in apk_cached_data:
+        return apk_cached_data['use_permissions']
+
+    try:
+        root = ET.fromstring(manifest_text.encode('utf-8'))
+    except Exception as e:
+        print("[MCP] Error parsing manifest:", e)
+        raise JSONRPCError(-1, ErrorMessages.GET_MANIFEST_FAILED)
+
+    ANDROID_NS = 'http://schemas.android.com/apk/res/android'
+    use_permissions = []
+
+    for perm in root.findall('uses-permission'):
+        name = perm.attrib.get('{' + ANDROID_NS + '}name')
+        if name:
+            use_permissions.append(name)
+            
+    apk_cached_data['use_permissions'] = use_permissions
+    return use_permissions
+
+
+@jsonrpc
+def search_assets(filepath, regex_pattern, limit=100):
+    """
+    Search for a regex pattern in all files within the APK's 'assets' directory.
+    This works for both text and binary files.
+    """
+    if not filepath or not regex_pattern:
+        raise JSONRPCError(-1, ErrorMessages.MISSING_PARAM)
+
+    apk = getOrLoadApk(filepath)
+
+    try:
+        # In Python 2, regex on byte strings is the default.
+        pattern = re.compile(regex_pattern)
+    except re.error as e:
+        raise JSONRPCError(-1, "Invalid regular expression: " + str(e))
+
+    results = []
+
+    # Find the 'Assets' unit
+    assets_root_unit = None
+    for child_unit in apk.getChildren():
+        if child_unit.getName() == 'Assets':
+            assets_root_unit = child_unit
+            break
+    
+    if not assets_root_unit:
+        return []
+    
+    stack = [(assets_root_unit, '')]
+    
+    while stack:
+        if limit > 0 and len(results) >= limit:
+            break
+
+        current_unit, current_path = stack.pop(0)
+        
+        if current_unit == assets_root_unit:
+            path = current_path
+        else:
+            unit_name = current_unit.getName()
+            path = os.path.join(current_path, unit_name)
+
+        children = current_unit.getChildren()
+        if children:
+            for child in children:
+                stack.append((child, path))
+        elif hasattr(current_unit, "getInput"):
+            input_obj = current_unit.getInput()
+            if input_obj:
+                stream = input_obj.getStream()
+                if stream:
+                    try:
+                        baos = ByteArrayOutputStream()
+                        buffer = jarray.zeros(8192, 'b')
+                        
+                        while True:
+                            bytes_read = stream.read(buffer)
+                            if bytes_read == -1:
+                                break
+                            baos.write(buffer, 0, bytes_read)
+                        
+                        content = baos.toByteArray().tostring()
+                        
+                        matches = pattern.findall(content)
+                        if matches:
+                            decoded_matches = []
+                            for m in matches:
+                                try:
+                                    decoded_matches.append(m.decode('utf-8'))
+                                except UnicodeDecodeError:
+                                    decoded_matches.append(m.encode('hex'))
+                            results.append({
+                                "asset_path": path,
+                                "matches": decoded_matches
+                            })
+                    finally:
+                        stream.close()
+    return results
+
+@jsonrpc
+def get_assets(filepath, assets_name):
+    """
+    Get the content of a specific asset file from the APK.
+    Returns the content as a UTF-8 string or a hex-encoded string for binary files.
+    """
+    if not filepath or not assets_name:
+        raise JSONRPCError(-1, ErrorMessages.MISSING_PARAM)
+
+    apk = getOrLoadApk(filepath)
+
+    # Find the 'Assets' unit
+    assets_root_unit = None
+    for child_unit in apk.getChildren():
+        if child_unit.getName() == 'Assets':
+            assets_root_unit = child_unit
+            break
+    
+    if not assets_root_unit:
+        raise JSONRPCError(-1, "Assets folder not found in the APK.")
+    
+    # Normalize path separators and split the path
+    path_parts = assets_name.replace('\\', '/').strip('/').split('/')
+    
+    current_unit = assets_root_unit
+    
+    for part in path_parts:
+        if not part:
+            continue
+        
+        children = current_unit.getChildren()
+        if not children:
+            raise JSONRPCError(-1, ErrorMessages.ASSET_NOT_FOUND)
+
+        found_child = None
+        for child in children:
+            if child.getName() == part:
+                found_child = child
+                break
+        
+        if found_child:
+            current_unit = found_child
+        else:
+            raise JSONRPCError(-1, ErrorMessages.ASSET_NOT_FOUND)
+
+    if current_unit.getChildren():
+        raise JSONRPCError(-1, ErrorMessages.ASSET_IS_DIRECTORY)
+
+    if hasattr(current_unit, "getInput"):
+        input_obj = current_unit.getInput()
+        if input_obj:
+            stream = input_obj.getStream()
+            if stream:
+                try:
+                    baos = ByteArrayOutputStream()
+                    buffer = jarray.zeros(8192, 'b')
+                    
+                    while True:
+                        bytes_read = stream.read(buffer)
+                        if bytes_read == -1:
+                            break
+                        baos.write(buffer, 0, bytes_read)
+                    
+                    content = baos.toByteArray().tostring()
+                    
+                    try:
+                        return content.decode('utf-8')
+                    except UnicodeDecodeError:
+                        return content.encode('hex')
+                finally:
+                    stream.close()
+
+    raise JSONRPCError(-1, "Failed to read asset content.")
 
 
 @jsonrpc
@@ -1046,7 +1411,7 @@ def get_strings(filepath, regex_pattern="", limit=100):
                         if limit > 0 and len(results) >= limit:
                             break
             except Exception as e:
-                print("Failed to parse string on " + str(s) + " due to: " + str(e))
+                print("Failed to parse string due to: " + str(e))
                 continue
                     
     return results
@@ -1153,6 +1518,8 @@ class ErrorMessages:
     GET_MANIFEST_FAILED = "[Error] Get AndroidManifest text failed."
     INDEX_OUT_OF_BOUNDS = "[Error] Index out of bounds."
     DECOMPILE_FAILED = "[Error] Failed to decompile code."
+    ASSET_NOT_FOUND = "[Error] Asset not found."
+    ASSET_IS_DIRECTORY = "[Error] The specified asset path is a directory, not a file."
     METHOD_NOT_FOUND = "[Error] Method not found in current apk, use check_java_identifier tool check your input first."
     METHOD_NOT_FOUND_WITHOUT_CHECK = "[Error] Method not found in current apk."
     CLASS_NOT_FOUND = "[Error] Class not found in current apk, use check_java_identifier tool check your input first."

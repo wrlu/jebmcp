@@ -10,10 +10,42 @@ def ping() -> str:
     """Do a simple ping to check server is alive and running"""
     return make_jsonrpc_request("ping")
 
+
 @mcp.tool()
-def get_manifest(filepath: Annotated[str, "full apk file path."]) -> str:
-    """Get the manifest of the given APK file in path, the passed in filepath needs to be a fully-qualified absolute path"""
-    return make_jsonrpc_request("get_manifest", filepath)
+def search_manifest(
+    filepath: Annotated[str, "full apk file path."],
+    regex_pattern: Annotated[str, "regular expression to search for in the manifest"]
+) -> list[str]:
+    """Search the content of AndroidManifest.xml using a regular expression and return all matches."""
+    return make_jsonrpc_request("search_manifest", filepath, regex_pattern)
+
+
+@mcp.tool()
+def get_assets(
+    filepath: Annotated[str, "full apk file path"],
+    assets_name: Annotated[str, "the full path of the asset, e.g. 'config/settings.json'"]
+) -> str:
+    """
+    Get the content of a specific asset file from the APK.
+    Returns the content as a UTF-8 string, or a hex-encoded string for binary files.
+    """
+    return make_jsonrpc_request("get_assets", filepath, assets_name)
+
+
+@mcp.tool()
+def search_assets(
+    filepath: Annotated[str, "full apk file path"],
+    regex_pattern: Annotated[str, "regular expression to search for in asset files"],
+    limit: Annotated[int, "maximum number of files with matches to return, set to 0 for no limit"] = 100
+) -> list[dict]:
+    """
+    Search for a regex pattern in all files within the APK's 'assets' directory.
+    This works for both text and binary files.
+    For binary matches, the result is hex-encoded.
+    Returns a list of dictionaries, each containing the asset's path and a list of matches found.
+    """
+    return make_jsonrpc_request("search_assets", filepath, regex_pattern, limit)
+
 
 @mcp.tool()
 def get_all_exported_activities(
@@ -44,6 +76,58 @@ def get_all_exported_services(
     The passed in filepath needs to be a fully-qualified absolute path.
     """
     return make_jsonrpc_request("get_all_exported_services", filepath)
+
+
+@mcp.tool()
+def get_all_exported_receivers(
+    filepath: Annotated[str, "full apk file path."]) -> list[str]:
+    """
+    Get all exported receiver names from the APK manifest.
+
+    This includes receivers with:
+    - android:exported="true"
+    - or no exported attribute but with at least one <intent-filter>
+    
+    The passed in filepath needs to be a fully-qualified absolute path.
+    """
+    return make_jsonrpc_request("get_all_exported_receivers", filepath)
+
+
+@mcp.tool()
+def get_all_exported_providers(
+    filepath: Annotated[str, "full apk file path."]) -> list[str]:
+    """
+    Get all exported provider names from the APK manifest.
+
+    This includes providers with:
+    - android:exported="true"
+    - or no exported attribute but with at least one <intent-filter>
+    
+    The passed in filepath needs to be a fully-qualified absolute path.
+    """
+    return make_jsonrpc_request("get_all_exported_providers", filepath)
+
+
+@mcp.tool()
+def get_permissions(
+    filepath: Annotated[str, "full apk file path."]) -> list[str]:
+    """
+    Get all custom permissions defined (<permission> tags) by the app in the APK manifest.
+    
+    The passed in filepath needs to be a fully-qualified absolute path.
+    """
+    return make_jsonrpc_request("get_permissions", filepath)
+
+
+@mcp.tool()
+def get_use_permissions(
+    filepath: Annotated[str, "full apk file path."]) -> list[str]:
+    """
+    Get all permissions requested (<uses-permission> tags) by the app in the APK manifest.
+    
+    The passed in filepath needs to be a fully-qualified absolute path.
+    """
+    return make_jsonrpc_request("get_use_permissions", filepath)
 
 
 @mcp.tool()
