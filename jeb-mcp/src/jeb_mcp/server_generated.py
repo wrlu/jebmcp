@@ -16,7 +16,7 @@ def search_manifest(
     filepath: Annotated[str, "full apk file path."],
     regex_pattern: Annotated[str, "regular expression to search for in the manifest"]
 ) -> list[dict]:
-    """Returns the matched strings along with their full line content and line numbers."""
+    """Returns matches with a fixed +/- 64 characters context window."""
     return make_jsonrpc_request("search_manifest", filepath, regex_pattern)
 
 

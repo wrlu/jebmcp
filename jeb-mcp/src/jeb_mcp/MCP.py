@@ -448,35 +448,47 @@ def get_manifest(filepath):
 def search_manifest(filepath, regex_pattern):
     """
     Search the content of AndroidManifest.xml using a regular expression.
-    Returns the matched strings along with their full line content and line numbers.
+    Returns matches with a fixed +/- 64 characters context window.
     """
     if not filepath or not regex_pattern:
         raise JSONRPCError(-1, ErrorMessages.MISSING_PARAM)
     
-    manifest_text = get_manifest(filepath)
+    manifest_raw = get_manifest(filepath)
     
     try:
-        # Using re.UNICODE flag for better compatibility in Python 2
+        # 使用 re.UNICODE 标志
         pattern = re.compile(regex_pattern, re.UNICODE)
     except re.error as e:
         raise JSONRPCError(-1, "Invalid regular expression: " + str(e))
         
     results = []
     
-    if not manifest_text:
+    if not manifest_raw:
         return results
 
-    lines = manifest_text.splitlines()
-    
-    for line_index, line in enumerate(lines):
-        matches = pattern.findall(line)
+    # 确保文本是 unicode 对象，这样切片操作的基础单位就是“字符”而不是“字节”
+    if isinstance(manifest_raw, str):
+        text_content = manifest_raw.decode('utf-8', 'replace')
+    else:
+        text_content = manifest_raw
+
+    # 使用 finditer 获取字符索引
+    for match in pattern.finditer(text_content):
+        start = match.start()
+        end = match.end()
+        m_str = match.group()
         
-        if matches:
-            results.append({
-                "line_number": line_index + 1,
-                "line_content": line.strip(),
-                "matches": matches
-            })
+        # 截取前后各 64 个字符
+        ctx_start = max(0, start - 64)
+        ctx_end = min(len(text_content), end + 64)
+        context_chars = text_content[ctx_start:ctx_end]
+        
+        results.append({
+            "match": m_str,
+            "offset": start,
+            "line_number": text_content.count('\n', 0, start) + 1,
+            "context": context_chars.strip()
+        })
             
     return results
 
