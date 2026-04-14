@@ -315,9 +315,10 @@ def get_strings(
     filepath: Annotated[str, "full apk file path"],
     regex_pattern: Annotated[str, "regular expression to filter the strings, e.g., '^https?://'"] = "",
     limit: Annotated[int, "maximum number of strings to return, set to 0 for no limit"] = 100
-) -> list[str]:
+) -> list[dict]:
     """
     Get hardcoded strings from the APK, filtered by a regular expression.
+    Returns a list of dictionaries, each containing the string 'value' and its 'xrefs' (cross-references where the string is defined/used).
     """
     return make_jsonrpc_request("get_strings", filepath, regex_pattern, limit)
 

@@ -1031,9 +1031,18 @@ def get_strings(filepath, regex_pattern="", limit=100):
             val = s.getValue()
             if val is not None:
                 if not pattern or pattern.search(val):
-                    results.append(val)
-                    if limit > 0 and len(results) >= limit:
-                        break
+                        xrefs = []
+                        actionXrefsData = ActionXrefsData()
+                        actionContext = ActionContext(codeUnit, Actions.QUERY_XREFS, s.getItemId(), None)
+                        if codeUnit.prepareExecution(actionContext, actionXrefsData):
+                            for i in range(actionXrefsData.getAddresses().size()):
+                                xrefs.append(actionXrefsData.getAddresses()[i])
+                        results.append({
+                            "value": val,
+                            "xrefs": xrefs
+                        })
+                        if limit > 0 and len(results) >= limit:
+                            break
                     
     return results
 
