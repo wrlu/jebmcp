@@ -1046,7 +1046,7 @@ def get_strings(filepath, regex_pattern="", limit=100):
                         if limit > 0 and len(results) >= limit:
                             break
             except Exception as e:
-                print(f"Parse string on {s} failed due to: {e}")
+                print("Failed to parse string on " + s + " due to: " + e)
                 continue
                     
     return results
