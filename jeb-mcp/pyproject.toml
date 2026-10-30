@@ -2,10 +2,20 @@
 name = "jeb-mcp"
 version = "2.0.0"
 description = "MCP server integration for JEB Decompiler (Official API)"
-dependencies = [
+dependencies = []
+
+[project.optional-dependencies]
+mcp = [
     "fastmcp>=0.4.1",
 ]
+
 requires-python = ">=3.10"
+
+[project.scripts]
+jeb = "jeb_mcp.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
 
 [build-system]
 requires = ["setuptools"]

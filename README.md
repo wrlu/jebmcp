@@ -59,7 +59,7 @@ uv: https://docs.astral.sh/uv/getting-started/installation/
   "mcpServers": {
     "jeb": {
       "command": "uv",
-      "args": ["--directory", "jeb-mcp/src/jeb_mcp", "run", "server.py"],
+      "args": ["--directory", "jeb-mcp/src/jeb_mcp", "run", "--extra", "mcp", "server.py"],
       "timeout": 1800,
       "disabled": false,
       "autoApprove": [

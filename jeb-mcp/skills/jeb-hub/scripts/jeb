@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+# Wrapper for the jeb-hub skill: runs src/jeb_mcp/cli.py from the jeb-mcp repo.
+# Symlink-safe so it also works when the skill directory is linked into
+# ~/.config/opencode/skills/jeb-hub.
+set -euo pipefail
+
+SELF="${BASH_SOURCE[0]}"
+while [ -L "$SELF" ]; do
+    DIR="$(cd -P "$(dirname "$SELF")" && pwd)"
+    SELF="$(readlink "$SELF")"
+    case "$SELF" in
+        /*) ;;
+        *) SELF="$DIR/$SELF" ;;
+    esac
+done
+
+HERE="$(cd -P "$(dirname "$SELF")" && pwd)"
+ROOT="$(cd "$HERE/../../.." && pwd)"
+exec "${PYTHON:-python3}" "$ROOT/src/jeb_mcp/cli.py" "$@"

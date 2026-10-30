@@ -1,10 +1,9 @@
-import platform
 import os
 import time
 import socket
 import subprocess
 # JEB 5.33.0 has removed the `--script` parameter.
-DEMO_JEB_PATH = os.path.join(os.path.expanduser("~") , "Applications", "JEB-5.30.0", "jeb_linux.sh")
+DEMO_JEB_PATH = os.path.join(os.path.expanduser("~") , "Applications", "JEB-5.30.0", "jeb_macos.sh")
 jeb_start_cmd = DEMO_JEB_PATH
 
 jeb_run_script_cmd = [
@@ -28,9 +27,12 @@ def main():
         if not is_port_in_use(port):
             environ = os.environ.copy()
             environ.update({
+                "JAVA_HOME": "/opt/homebrew/opt/openjdk@21",
                 "JEB_MCP_DAEMON": "1"
             })
             subprocess.run(jeb_run_script_cmd, env=environ)
+        else:
+            print("in use")
         time.sleep(check_interval)
 
 if __name__ == "__main__":

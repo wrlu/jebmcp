@@ -295,6 +295,7 @@ class Server(object):  # Use explicit inheritance from object for py2
         if self.server_thread:
             self.server_thread.join()
             self.server = None
+        release_all_resources()
         print("[MCP] Server stopped")
 
     def _run_server(self):
@@ -361,21 +362,145 @@ def ping():
 
 # implement a FIFO queue to store the artifacts
 artifactQueue = list()
+artifact_cache = {}
+ARTIFACT_IDLE_TIMEOUT = 2 * 60
+PROJECT_NAME = 'MCPPluginProject'
+artifact_lock = threading.Lock()
+cleanup_started = False
+loaded_project = None
+loading_in_progress = False
+last_api_activity = 0
+
+def start_artifact_cleanup():
+    def cleanup_task():
+        while True:
+            time.sleep(60)
+            try:
+                cleanup_idle_artifacts(time.time())
+            except Exception as e:
+                print('[MCP] Error during artifact cleanup: %s' % e)
+
+    t = threading.Thread(target=cleanup_task)
+    t.daemon = True
+    t.start()
+
+def cleanup_idle_artifacts(current_time):
+    """Release idle artifacts and all JEB-side resources once nothing is loaded."""
+    global artifactQueue
+    global loaded_project
+
+    # Adopt live artifacts that are not tracked yet (e.g. loaded before the
+    # cleanup thread started) so they are released after the idle timeout too.
+    if loaded_project is not None:
+        try:
+            live_artifacts = loaded_project.getLiveArtifacts()
+        except Exception as e:
+            live_artifacts = []
+            print('[MCP] Error enumerating live artifacts: %s' % e)
+
+        with artifact_lock:
+            for artifact in live_artifacts:
+                filepath = artifact.getArtifact().getName()
+                if filepath not in artifact_cache:
+                    artifact_cache[filepath] = {
+                        "artifact": artifact,
+                        "last_access": current_time,
+                    }
+                    artifactQueue.append(artifact)
+
+    to_remove = []
+    with artifact_lock:
+        for filepath, data in artifact_cache.items():
+            if current_time - data["last_access"] > ARTIFACT_IDLE_TIMEOUT:
+                to_remove.append(filepath)
+
+        for filepath in to_remove:
+            artifact = artifact_cache[filepath]["artifact"]
+            print('[MCP] Auto cleaning up idle artifact: %s' % filepath)
+            try:
+                RuntimeProjectUtil.destroyLiveArtifact(artifact)
+            except Exception as e:
+                print('[MCP] Error destroying artifact: %s' % e)
+            del artifact_cache[filepath]
+            artifactQueue = [a for a in artifactQueue if a.getArtifact().getName() != filepath]
+
+        if to_remove:
+            # The cached manifest/components belong to a released artifact.
+            apk_cached_data.clear()
+
+        if not artifact_cache:
+            # Nothing is loaded anymore, drop every JEB-side resource. Skip if
+            # an artifact is being loaded so we do not unload its project.
+            apk_cached_data.clear()
+            if loaded_project is not None and not loading_in_progress \
+                    and current_time - last_api_activity > ARTIFACT_IDLE_TIMEOUT:
+                loaded_project = None
+                try:
+                    engctx = CTX.getEnginesContext() if CTX is not None else None
+                    if engctx:
+                        engctx.unloadProject(PROJECT_NAME)
+                except Exception as e:
+                    print('[MCP] Error unloading project: %s' % e)
+                try:
+                    from java.lang import System as JavaSystem
+                    JavaSystem.gc()
+                except Exception as e:
+                    print('[MCP] Error requesting GC: %s' % e)
+
+def release_all_resources():
+    """Destroy every cached artifact and unload the runtime project."""
+    global artifactQueue
+    global loaded_project
+
+    with artifact_lock:
+        for filepath, data in artifact_cache.items():
+            print('[MCP] Releasing artifact: %s' % filepath)
+            try:
+                RuntimeProjectUtil.destroyLiveArtifact(data["artifact"])
+            except Exception as e:
+                print('[MCP] Error destroying artifact: %s' % e)
+        artifact_cache.clear()
+        artifactQueue = list()
+        apk_cached_data.clear()
+
+    if loaded_project is not None:
+        loaded_project = None
+        try:
+            engctx = CTX.getEnginesContext() if CTX is not None else None
+            if engctx:
+                engctx.unloadProject(PROJECT_NAME)
+        except Exception as e:
+            print('[MCP] Error unloading project: %s' % e)
+        try:
+            from java.lang import System as JavaSystem
+            JavaSystem.gc()
+        except Exception as e:
+            print('[MCP] Error requesting GC: %s' % e)
 
 def addArtifactToQueue(artifact):
     """Add an artifact to the queue"""
-    artifactQueue.append(artifact)
+    with artifact_lock:
+        artifactQueue.append(artifact)
+        filepath = artifact.getArtifact().getName()
+        artifact_cache[filepath] = {"artifact": artifact, "last_access": time.time()}
 
 def getArtifactFromQueue():
     """Get an artifact from the queue"""
-    if len(artifactQueue) > 0:
-        return artifactQueue.pop(0)
+    with artifact_lock:
+        if len(artifactQueue) > 0:
+            artifact = artifactQueue.pop(0)
+            filepath = artifact.getArtifact().getName()
+            if filepath in artifact_cache:
+                del artifact_cache[filepath]
+            return artifact
     return None
 
 def clearArtifactQueue():
     """Clear the artifact queue"""
     global artifactQueue
-    artifactQueue = list()
+    with artifact_lock:
+        artifactQueue = list()
+        artifact_cache.clear()
 
 MAX_OPENED_ARTIFACTS = 1
 
@@ -383,6 +508,15 @@ MAX_OPENED_ARTIFACTS = 1
 apk_cached_data = {}
 
 def getOrLoadApk(filepath):
+    global cleanup_started
+    global loaded_project
+    global loading_in_progress
+    global last_api_activity
+    last_api_activity = time.time()
+    if not cleanup_started:
+        start_artifact_cleanup()
+        cleanup_started = True
+
     if not os.path.exists(filepath):
         print("File not found: %s" % filepath)
         raise JSONRPCError(-1, ErrorMessages.LOAD_APK_NOT_FOUND)
@@ -394,16 +528,27 @@ def getOrLoadApk(filepath):
         raise JSONRPCError(-1, ErrorMessages.LOAD_APK_FAILED)
 
     # Create a project
-    project = engctx.loadProject('MCPPluginProject')
+    project = engctx.loadProject(PROJECT_NAME)
+    loaded_project = project
     correspondingArtifact = None
-    for artifact in project.getLiveArtifacts():
-        if artifact.getArtifact().getName() == filepath:
-            # If the artifact is already loaded, return it
-            correspondingArtifact = artifact
-            break
+    
+    with artifact_lock:
+        for artifact in project.getLiveArtifacts():
+            if artifact.getArtifact().getName() == filepath:
+                # If the artifact is already loaded, return it
+                correspondingArtifact = artifact
+                if filepath in artifact_cache:
+                    artifact_cache[filepath]["last_access"] = time.time()
+                else:
+                    artifact_cache[filepath] = {"artifact": correspondingArtifact, "last_access": time.time()}
+                break
+                
     if not correspondingArtifact:
         # try to load the artifact, but first check if the queue size has been exceeded
-        if len(artifactQueue) >= MAX_OPENED_ARTIFACTS:
+        with artifact_lock:
+            queue_len = len(artifactQueue)
+            
+        if queue_len >= MAX_OPENED_ARTIFACTS:
             # unload the oldest artifact
             oldestArtifact = getArtifactFromQueue()
             if oldestArtifact:
@@ -413,9 +558,15 @@ def getOrLoadApk(filepath):
                 RuntimeProjectUtil.destroyLiveArtifact(oldestArtifact)
 
         # Fix: 直接用filepath而不是basename作为Artifact的名称，否则如果加载了多个同名不同路径的apk，会出现问题。
-        correspondingArtifact = project.processArtifact(Artifact(filepath, FileInput(File(filepath))))
-        addArtifactToQueue(correspondingArtifact)
-        apk_cached_data.clear()
+        with artifact_lock:
+            loading_in_progress = True
+        try:
+            correspondingArtifact = project.processArtifact(Artifact(filepath, FileInput(File(filepath))))
+            addArtifactToQueue(correspondingArtifact)
+            apk_cached_data.clear()
+        finally:
+            with artifact_lock:
+                loading_in_progress = False
     
     unit = correspondingArtifact.getMainUnit()
     if isinstance(unit, IApkUnit):
