@@ -3,7 +3,7 @@
 
 This speaks the same JSON-RPC protocol as the existing MCP wrapper
 (server.py -> POST http://127.0.0.1:16161/mcp), so the MCP architecture keeps
-working unchanged. The CLI is the interface used by the jeb-hub skill.
+working unchanged. The CLI is the interface used by the jeb-hub-skill.
 
 Examples:
   jeb ping

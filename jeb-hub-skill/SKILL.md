@@ -1,5 +1,5 @@
 ---
-name: jeb-hub
+name: jeb-hub-skill
 description: Use when analyzing APKs, JARs or DEX files with JEB Pro via the jeb-daemon. Triggers on JEB, decompilation, smali, Android manifest/components, exported activities/services/providers/receivers, permissions, method/field xrefs and callers, hardcoded strings, APK assets, rename refactoring, or running Jython inside JEB.
 version: "1.0"
 tags: [jeb-pro, android, apk, decompile, reverse-engineering]
@@ -14,7 +14,7 @@ shell-driven workflow, reproducible commands, or JSON output.
 
 - Daemon endpoint: `http://127.0.0.1:16161/mcp` (JSON-RPC 2.0)
 - Host/port/timeout override: `JEB_MCP_HOST`, `JEB_MCP_PORT`, `JEB_MCP_TIMEOUT`
-- CLI source: `src/jeb_mcp/cli.py`
+- CLI source: `jeb-mcp/src/jeb_mcp/cli.py`
 
 ## When to Use
 
@@ -43,7 +43,7 @@ Then verify connectivity:
 jeb ping
 ```
 
-`jeb` is a symlink to `skills/jeb-hub/scripts/jeb` installed on `PATH`
+`jeb` is a symlink to `jeb-hub-skill/scripts/jeb` installed on `PATH`
 (e.g. `~/.local/bin/jeb`). `ping` prints `Successfully connected to JEB Pro`
 on success. If it fails, ask the user to start the MCP server in JEB; do not
 retry blindly.
